@@ -24,13 +24,16 @@ for (const f of files) {
     code += '\n// ---- ' + path.relative(root, f).replace(/\\/g, '/') + '\n';
     code += fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '') + '\n';
 }
+// версия из файла VERSION
+const VERSION = fs.readFileSync(path.join(root, 'VERSION'), 'utf8').trim();
+code = code.replace(/VERSION: '[^']*',/, "VERSION: '" + VERSION + "',");
 // штамп сборки: дата + короткий git-хеш
 let gitHash = '';
 try { gitHash = require('child_process').execSync('git rev-parse --short HEAD', { cwd: root, stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); } catch (e) {}
 const d = new Date();
 const pad = n => String(n).padStart(2, '0');
 const BUILD = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) + (gitHash ? ' · ' + gitHash : '');
-code = code.replace("VERSION: '1.0.0',", "VERSION: '1.0.0',\n    BUILD: '" + BUILD + "',");
+code = code.replace("VERSION: '" + VERSION + "',", "VERSION: '" + VERSION + "',\n    BUILD: '" + BUILD + "',");
 fs.mkdirSync(outDir, { recursive: true });
 // ExtendScript читает UTF-8 с BOM корректно (нужно для кириллицы в UI)
 fs.writeFileSync(out, '\uFEFF' + code, 'utf8');
@@ -70,6 +73,15 @@ const cepHost = path.join(root, 'cep', 'com.unikit.panel', 'host');
 fs.mkdirSync(cepHost, { recursive: true });
 fs.copyFileSync(out, path.join(cepHost, 'UniKit.jsx'));
 console.log('copied ->', path.relative(root, path.join(cepHost, 'UniKit.jsx')), 'build', BUILD);
+// версия в manifest.xml (ExtensionBundleVersion, Extension Version, пункт меню)
+const mf = path.join(root, 'cep', 'com.unikit.panel', 'CSXS', 'manifest.xml');
+if (fs.existsSync(mf)) {
+    let xml = fs.readFileSync(mf, 'utf8')
+        .replace(/ExtensionBundleVersion="[^"]*"/, 'ExtensionBundleVersion="' + VERSION + '"')
+        .replace(/(<Extension Id="com.unikit.panel.main" Version=")[^"]*(")/, '$1' + VERSION + '$2')
+        .replace(/<Menu>[^<]*<\/Menu>/, '<Menu>UniKit v' + VERSION + '</Menu>');
+    fs.writeFileSync(mf, xml);
+}
 // cache-busting ссылок на css/js в index.html панели
 const idx = path.join(root, 'cep', 'com.unikit.panel', 'index.html');
 if (fs.existsSync(idx)) {

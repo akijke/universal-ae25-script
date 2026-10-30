@@ -65,6 +65,9 @@ for /d %%A in ("%ProgramFiles%\Adobe\Adobe After Effects*") do (
 )
 
 echo.
+for /f "tokens=2 delims='" %%B in ('findstr /C:"BUILD:" "%SRC%"') do echo Установлена версия: %%B
+if exist "%~dp0VERSION" (set /p UKV=<"%~dp0VERSION" & echo UniKit v!UKV!)
+echo.
 echo Готово. Перезапустите After Effects:
 echo   - CEP-панель:     Window ^> Extensions ^> UniKit
 echo   - ScriptUI-панель: Window ^> UniKit.jsx

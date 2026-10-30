@@ -60,8 +60,8 @@ if (!String.prototype.trim) {
 //  UK — ядро: реестр пресетов, хелперы для ключей, изинга, эффектов, контролов
 // =============================================================================
 var UK = {
-    VERSION: '1.0.0',
-    BUILD: '2026-10-30 23:06 · 58f0e09',
+    VERSION: '1.1.0',
+    BUILD: '2026-10-30 23:50 · 0b1f141',
     NAME: 'UniKit',
     PREFIX: 'UK · ',          // префикс имён эффектов, добавленных тулкитом
     CTRL_PREFIX: 'UK: ',      // префикс имён слайдеров-контролов
@@ -1174,7 +1174,7 @@ UK.buildUI = function (thisObj) {
     var btnHelp = rb.add('button', undefined, '?');
     btnHelp.preferredSize.width = 24;
 
-    var foot = win.add('statictext', undefined, UK.NAME + ' v' + UK.VERSION + ' · пресетов: ' + UK.presets.length);
+    var foot = win.add('statictext', undefined, UK.NAME + ' v' + UK.VERSION + (UK.BUILD ? ' · ' + UK.BUILD : '') + ' · пресетов: ' + UK.presets.length);
     foot.alignment = ['fill', 'bottom'];
     foot.graphics.foregroundColor = foot.graphics.newPen(foot.graphics.PenType.SOLID_COLOR, [0.6, 0.6, 0.6], 1);
 

@@ -21,8 +21,6 @@
           <MainPath>./index.html</MainPath>
           <CEFCommandLine>
             <Parameter>--allow-file-access-from-files</Parameter>
-            <Parameter>--allow-file-access</Parameter>
-            <Parameter>--disable-application-cache</Parameter>
           </CEFCommandLine>
         </Resources>
         <Lifecycle>
@@ -30,7 +28,7 @@
         </Lifecycle>
         <UI>
           <Type>Panel</Type>
-          <Menu>UniKit</Menu>
+          <Menu>UniKit v1.1.0</Menu>
           <Geometry>
             <Size>
               <Height>760</Height>
@@ -45,7 +43,6 @@
               <Width>1200</Width>
             </MaxSize>
           </Geometry>
-          <Icons/>
         </UI>
       </DispatchInfo>
     </Extension>

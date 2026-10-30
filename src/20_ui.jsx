@@ -107,7 +107,7 @@ UK.buildUI = function (thisObj) {
     var btnHelp = rb.add('button', undefined, '?');
     btnHelp.preferredSize.width = 24;
 
-    var foot = win.add('statictext', undefined, UK.NAME + ' v' + UK.VERSION + ' · пресетов: ' + UK.presets.length);
+    var foot = win.add('statictext', undefined, UK.NAME + ' v' + UK.VERSION + (UK.BUILD ? ' · ' + UK.BUILD : '') + ' · пресетов: ' + UK.presets.length);
     foot.alignment = ['fill', 'bottom'];
     foot.graphics.foregroundColor = foot.graphics.newPen(foot.graphics.PenType.SOLID_COLOR, [0.6, 0.6, 0.6], 1);
 
