@@ -87,32 +87,78 @@ rem 2) Свежая версия из GitHub (если это git-репозит
 rem ------------------------------------------------------------
 echo.
 echo --- Получение новой версии ---
+set "REPO_URL=https://github.com/akijke/universal-ae25-script"
+set FETCHED=0
+
+rem --- способ A: git (если папка — клон репозитория)
 where git >nul 2>&1
-if errorlevel 1 (
-    echo [--] git не найден — использую файлы из этой папки без обновления.
-) else if not exist ".git" (
-    echo [--] Папка не является git-репозиторием — использую файлы как есть.
-) else (
+if not errorlevel 1 if exist ".git" (
     for /f %%H in ('git rev-parse --short HEAD') do set "OLD=%%H"
-    git fetch --quiet origin main
+    echo Текущая локальная версия: !OLD!. Запрашиваю GitHub...
+    git fetch origin main
     if errorlevel 1 (
-        echo [--] Нет связи с GitHub — использую локальную версию !OLD!.
+        echo [!!] git fetch НЕ УДАЛСЯ ^(см. сообщение выше^).
     ) else (
         for /f %%H in ('git rev-parse --short origin/main') do set "NEW=%%H"
         if "!OLD!"=="!NEW!" (
             echo [OK] Локальная версия уже последняя: !OLD!
+            set FETCHED=1
         ) else (
             echo Обновление !OLD! -^> !NEW!:
             git --no-pager log --oneline --no-decorate !OLD!..origin/main
             git status --porcelain | findstr /r "^.M ^M. ^A ^D" >nul
             if not errorlevel 1 git stash push -q -m "unikit-reinstall"
-            git pull --ff-only --quiet origin main
+            git pull --ff-only origin main
             if errorlevel 1 (
-                echo [--] git pull не удался, продолжаю с локальной версией.
+                echo [!!] git pull НЕ УДАЛСЯ.
             ) else (
                 echo [OK] Код обновлён до !NEW!.
+                set FETCHED=1
             )
         )
+    )
+)
+
+rem --- способ B: скачать ZIP с GitHub без git (curl + tar есть в Windows 10/11)
+if "!FETCHED!"=="0" (
+    echo Пробую скачать архив последней версии: %REPO_URL%/archive/refs/heads/main.zip
+    set "DL=%TEMP%\unikit_dl"
+    if exist "!DL!" rmdir /s /q "!DL!"
+    mkdir "!DL!" >nul 2>&1
+    curl.exe -L -f -s -S -o "!DL!\main.zip" "%REPO_URL%/archive/refs/heads/main.zip"
+    if errorlevel 1 (
+        echo [!!] СКАЧАТЬ НЕ УДАЛОСЬ.
+    ) else (
+        tar.exe -xf "!DL!\main.zip" -C "!DL!"
+        if exist "!DL!\universal-ae25-script-main\dist\UniKit.jsx" (
+            xcopy "!DL!\universal-ae25-script-main\*" "%~dp0" /E /Y /Q >nul
+            echo [OK] Файлы обновлены из архива GitHub.
+            set FETCHED=1
+        ) else (
+            echo [!!] Архив скачан, но распаковать не удалось.
+        )
+    )
+    if exist "!DL!" rmdir /s /q "!DL!" >nul 2>&1
+)
+
+if "!FETCHED!"=="0" (
+    echo.
+    echo ============================================================
+    echo   [!!] НОВАЯ ВЕРСИЯ НЕ ПОЛУЧЕНА. Будет установлена та копия,
+    echo        что уже лежит в этой папке ^(возможно, старая^).
+    echo.
+    echo   Самая частая причина: репозиторий ПРИВАТНЫЙ, а на этом
+    echo   компьютере нет входа в GitHub. Варианты:
+    echo     1^) сделать репозиторий публичным ^(тогда скачивание работает везде^)
+    echo     2^) на этом ПК: установить GitHub CLI и выполнить  gh auth login
+    echo        ^(или git clone с логином^), затем запустить reinstall.bat снова
+    echo     3^) скачать ZIP вручную: %REPO_URL% ^> Code ^> Download ZIP,
+    echo        распаковать поверх этой папки и запустить reinstall.bat
+    echo ============================================================
+    echo.
+    if /i not "%~1"=="/silent" (
+        choice /C YN /M "Продолжить установку локальной копии? [Y/N]"
+        if errorlevel 2 goto :end
     )
 )
 
