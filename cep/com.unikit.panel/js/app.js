@@ -456,11 +456,11 @@
         var repo = CEP.readFile(ext + '/repo_path.txt');
         if (!repo) { toast('Не найден путь к репозиторию. Переустановите панель через install.bat из папки проекта.', 'err', 7000); return; }
         repo = repo.replace(/[\r\n]+$/, '').replace(/[\\\/]+$/, '');
-        var bat = repo + '\\update.bat';
-        toast('Обновить UniKit из GitHub? Текущая сборка: ' + buildLabel() + '. Откроется окно консоли; после завершения перезапустите AE.', 'info', 9000, { label: 'Обновить', fn: function () {
-            var ok = CEP.run('C:\\Windows\\System32\\cmd.exe', ['/c', 'start', 'UniKit update', bat]);
-            if (ok) toast('Обновление запущено в отдельном окне. После завершения перезапустите After Effects и сверьте сборку в статус-баре (сейчас ' + buildLabel() + ').', 'ok', 8000);
-            else toast('Не удалось запустить update.bat. Запустите вручную: ' + bat, 'err', 9000);
+        var bat = repo + '\\reinstall.bat';
+        toast('Переустановить UniKit (полное удаление + свежая версия из GitHub)? Текущая сборка: ' + buildLabel() + '. Откроется окно консоли и попросит закрыть After Effects — сохраните проект.', 'info', 10000, { label: 'Переустановить', fn: function () {
+            var ok = CEP.run('C:\\Windows\\System32\\cmd.exe', ['/c', 'start', 'UniKit reinstall', bat]);
+            if (ok) toast('Переустановка запущена в отдельном окне. Ответьте Y на закрытие AE, затем запустите AE заново и сверьте сборку в статус-баре (сейчас ' + buildLabel() + ').', 'ok', 9000);
+            else toast('Не удалось запустить reinstall.bat. Закройте AE и запустите вручную: ' + bat, 'err', 9000);
         } });
     }
 
