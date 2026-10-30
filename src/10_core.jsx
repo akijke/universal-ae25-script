@@ -17,6 +17,7 @@ var UK = {
         { id: 'light',   name: 'Свет и лайтсвипы' },
         { id: 'text',    name: 'Текст' },
         { id: 'cam',     name: 'Камера и движение' },
+        { id: 'design',  name: 'Дизайн (графика)' },
         { id: 'util',    name: 'Утилиты' },
         { id: 'combo',   name: 'Готовые решения' },
         { id: 'fav',     name: '★ Избранное' }

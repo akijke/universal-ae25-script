@@ -75,6 +75,7 @@ var UK = {
         { id: 'light',   name: 'Свет и лайтсвипы' },
         { id: 'text',    name: 'Текст' },
         { id: 'cam',     name: 'Камера и движение' },
+        { id: 'design',  name: 'Дизайн (графика)' },
         { id: 'util',    name: 'Утилиты' },
         { id: 'combo',   name: 'Готовые решения' },
         { id: 'fav',     name: '★ Избранное' }
@@ -2545,6 +2546,730 @@ UK.PREVIEW = UK.PREVIEW || {};
 })();
 
 
+// ---- src/presets/32_in_pro.jsx
+// =============================================================================
+//  PRO-анимации появления (In) — многослойные, «дизайнерские».
+//  Определения общие для In/Out: UK.P.defs; 33_out_pro.jsx регистрирует зеркала.
+// =============================================================================
+(function () {
+    var A = UK.A;
+
+    // ---------------------------------------------------------------- хелперы
+    var P = UK.P = {
+        defs: [],
+        /** Контекст для вспомогательного слоя (overshoot-выражения, контролы) */
+        sub: function (c, L) { return { opts: c.opts, strength: c.strength, layer: L, comp: c.comp }; },
+        /** hidden→visible (in) или visible→hidden (out) двумя ключами */
+        anim: function (c, prop, hidden, visible, ta, tb, ease) {
+            ease = ease || c.ease;
+            if (c.isOut) return UK.key2(prop, ta, visible, tb, hidden, ease, true);
+            return UK.key2(prop, ta, hidden, tb, visible, ease);
+        },
+        /** Три ключа: hidden → mid → visible (для out — в обратном порядке) */
+        anim3: function (c, prop, hidden, mid, visible, ta, tb, ease, midFrac) {
+            midFrac = midFrac == null ? 0.6 : midFrac;
+            ease = ease || c.ease;
+            var tm = c.isOut ? ta + (tb - ta) * (1 - midFrac) : ta + (tb - ta) * midFrac;
+            if (c.isOut) return UK.keys(prop, [[ta, visible], [tm, mid], [tb, hidden]], ease, true);
+            return UK.keys(prop, [[ta, hidden], [tm, mid], [tb, visible]], ease);
+        },
+        /** Интервал для i-го из n элементов с долей длительности frac (каскад внутри c.dur) */
+        seg: function (c, i, n, frac) {
+            frac = frac == null ? 0.65 : frac;
+            var span = c.dur * frac, step = n > 1 ? (c.dur - span) / (n - 1) : 0;
+            var ta = c.t0 + i * step;
+            return [ta, ta + span];
+        },
+        /** Fade по opacity на [ta,tb] (учитывает in/out) */
+        fade: function (c, L, ta, tb, ease) {
+            var op = L.transform.opacity, vis = op.valueAtTime(c.isOut ? c.t0 : c.t1, false);
+            P.anim(c, op, 0, vis, ta, tb, ease || 'expoOut');
+            return op;
+        },
+        /**
+         * Разрезать слой на n полос дублями с масками (полосы перпендикулярны направлению).
+         * Возвращает [{layer, mask, i, cx, cy}] — cx/cy центр полосы в координатах слоя.
+         */
+        slices: function (c, n, perpendicular) {
+            var L = c.layer, r = A.rect(L, c.isOut ? c.t0 : c.t1), pad = 6, res = [], i;
+            var horizMove = A.horiz(c);
+            if (perpendicular) horizMove = !horizMove;
+            var layers = [L];
+            for (i = 1; i < n; i++) {
+                var d = L.duplicate();
+                d.name = UK.PREFIX + L.name + ' ' + (i + 1);
+                layers.push(d);
+            }
+            for (i = 0; i < n; i++) {
+                var m = A.addMask(layers[i], 'Slice ' + (i + 1)), sh, cx, cy;
+                if (horizMove) {
+                    var y0 = r.t + r.h * i / n, y1 = r.t + r.h * (i + 1) / n;
+                    sh = A.rectShape(r.l - pad, y0 - (i === 0 ? pad : 0), r.l + r.w + pad, y1 + (i === n - 1 ? pad : 0));
+                    cx = r.l + r.w / 2; cy = (y0 + y1) / 2;
+                } else {
+                    var x0 = r.l + r.w * i / n, x1 = r.l + r.w * (i + 1) / n;
+                    sh = A.rectShape(x0 - (i === 0 ? pad : 0), r.t - pad, x1 + (i === n - 1 ? pad : 0), r.t + r.h + pad);
+                    cx = (x0 + x1) / 2; cy = r.t + r.h / 2;
+                }
+                m.property('ADBE Mask Shape').setValue(sh);
+                res.push({ layer: layers[i], mask: m, i: i, cx: cx, cy: cy, r: r });
+            }
+            return res;
+        },
+        /** Эллиптическая маска-форма (cx,cy,rx,ry) */
+        ellipse: function (cx, cy, rx, ry) {
+            var k = 0.5523, s = new Shape();
+            s.vertices = [[cx, cy - ry], [cx + rx, cy], [cx, cy + ry], [cx - rx, cy]];
+            s.inTangents = [[-rx * k, 0], [0, -ry * k], [rx * k, 0], [0, ry * k]];
+            s.outTangents = [[rx * k, 0], [0, ry * k], [-rx * k, 0], [0, -ry * k]];
+            s.closed = true;
+            return s;
+        },
+        /** Регистрация всех определений как in или out */
+        register: function (mode) {
+            var out = mode === 'out';
+            for (var i = 0; i < P.defs.length; i++) {
+                (function (d) {
+                    UK.add({
+                        id: (out ? 'out.' : 'in.') + d.key,
+                        cat: out ? 'out' : 'in',
+                        name: out ? d.nameOut : d.nameIn,
+                        desc: (out ? d.descOut || d.descIn : d.descIn) + ' [PRO]',
+                        tags: d.tags + ' pro premium',
+                        preview: out ? (d.previewOut || d.preview) : d.preview,
+                        apply: function (c) { d.build(c); }
+                    });
+                })(P.defs[i]);
+            }
+        }
+    };
+    function def(d) { P.defs.push(d); }
+    function tr(c, m) { return c.layer.transform.property(m); }
+    function vis(c, prop) { return prop.valueAtTime(c.isOut ? c.t0 : c.t1, false); }
+
+    // ================================================================ определения
+
+    def({
+        key: 'proSlice', preview: 'slideIn', previewOut: 'slideOut',
+        nameIn: 'Slice Reveal · Полосы-слайсы', nameOut: 'Slice Hide · Уход полосами',
+        descIn: 'Слой режется на 4 полосы (дубли с масками); полосы влетают по направлению каскадом с направленным размытием.',
+        descOut: 'Слой режется на 4 полосы; полосы разлетаются по направлению каскадом с размытием.',
+        tags: 'slice strips split полосы слайс',
+        build: function (c) {
+            var n = 4, sl = P.slices(c, n), i;
+            for (i = 0; i < n; i++) {
+                var L = sl[i].layer, pos = L.transform.position, v = vis(c, pos);
+                var dist = UK.exitDistance(L, c.comp, c.dirV, c.t0) * (0.6 + 0.4 * c.strength);
+                var dir = (i % 2 === 0) ? c.dirV : UK.vecMul(c.dirV, 1); // все с одной стороны, разный тайминг
+                var s = P.seg(c, c.isOut ? n - 1 - i : i, n, 0.6);
+                P.anim(c, pos, UK.vecAdd(v, UK.vecMul(dir, dist)), v, s[0], s[1]);
+                UK.applyEaseExpr(pos, c.ease, P.sub(c, L));
+                var mb = UK.addFx(L, 'ADBE Motion Blur', 'Slice Blur');
+                UK.set(mb, 'ADBE Motion Blur-0001', A.blurDir(c));
+                P.anim(c, UK.p(mb, 'ADBE Motion Blur-0002'), 80 * c.strength, 0, s[0], s[1], 'expoOut');
+                UK.motionBlur(L, c.comp);
+            }
+        }
+    });
+
+    def({
+        key: 'proSplit', preview: 'push', previewOut: 'push',
+        nameIn: 'Split Reveal · Схождение половин', nameOut: 'Split Hide · Расхождение половин',
+        descIn: 'Слой делится на две половины поперёк направления; половины съезжаются с противоположных сторон.',
+        descOut: 'Две половины разъезжаются в противоположные стороны и исчезают.',
+        tags: 'split half halves половины разрез',
+        build: function (c) {
+            var sl = P.slices(c, 2, true), i;
+            for (i = 0; i < 2; i++) {
+                var L = sl[i].layer, pos = L.transform.position, v = vis(c, pos);
+                // половины двигаются вдоль разреза (перпендикулярно направлению пользователя)
+                var mv = A.horiz(c) ? [0, i === 0 ? -1 : 1] : [i === 0 ? -1 : 1, 0];
+                var dist = UK.exitDistance(L, c.comp, mv, c.t0) * (0.5 + 0.5 * c.strength);
+                P.anim(c, pos, UK.vecAdd(v, UK.vecMul(mv, dist)), v, c.t0, c.t1);
+                UK.applyEaseExpr(pos, c.ease, P.sub(c, L));
+                UK.motionBlur(L, c.comp);
+            }
+        }
+    });
+
+    def({
+        key: 'proBlinds3D', preview: 'flip', previewOut: 'flip',
+        nameIn: 'Blinds 3D · 3D-жалюзи', nameOut: 'Blinds 3D Out · 3D-жалюзи уход',
+        descIn: 'Слой режется на 5 полос, каждая — 3D и поворачивается вокруг своей оси с каскадной задержкой.',
+        tags: 'blinds 3d rotate жалюзи полосы',
+        build: function (c) {
+            var n = 5, sl = P.slices(c, n), i, horizMove = A.horiz(c);
+            for (i = 0; i < n; i++) {
+                var L = sl[i].layer;
+                UK.to3D(L);
+                A.moveAnchor(L, sl[i].cx, sl[i].cy, c.t0);
+                var rp = horizMove ? L.transform.xRotation : L.transform.yRotation;
+                var v = vis(c, rp), s = P.seg(c, i, n, 0.7);
+                P.anim(c, rp, v + 90 * (c.dirV[0] || c.dirV[1] || 1), v, s[0], s[1]);
+                UK.applyEaseExpr(rp, c.ease, P.sub(c, L));
+                P.fade(c, L, s[0], s[0] + (s[1] - s[0]) * 0.3);
+                UK.motionBlur(L, c.comp);
+            }
+        }
+    });
+
+    def({
+        key: 'proStrokeWipe', preview: 'wipe',
+        nameIn: 'Soft Mask Wipe · Мягкая шторка', nameOut: 'Soft Mask Hide · Мягкое закрытие',
+        descIn: 'Прямоугольная маска растёт по направлению с растушёвкой края и затухающим направленным смазом.',
+        tags: 'mask wipe feather soft маска шторка',
+        build: function (c) {
+            var mp = A.maskPair(c.layer, c, c.t0), m = A.addMask(c.layer, 'Soft Wipe');
+            P.anim(c, m.property('ADBE Mask Shape'), mp.empty, mp.full, c.t0, c.t1);
+            var f = 40 * c.strength;
+            m.property('ADBE Mask Feather').setValue(A.horiz(c) ? [f, 0] : [0, f]);
+            var mb = UK.addFx(c.layer, 'ADBE Motion Blur', 'Wipe Blur');
+            UK.set(mb, 'ADBE Motion Blur-0001', A.blurDir(c));
+            P.anim(c, UK.p(mb, 'ADBE Motion Blur-0002'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+        }
+    });
+
+    def({
+        key: 'proBrush', preview: 'wipe',
+        nameIn: 'Brush Reveal · Мазок кисти', nameOut: 'Brush Hide · Стирание мазком',
+        descIn: 'Linear Wipe с рваным краем (Roughen Edges) и лёгкой турбулентностью — как мазок кисти по направлению.',
+        tags: 'brush paint stroke roughen мазок кисть',
+        build: function (c) {
+            var L = c.layer;
+            var w = UK.addFx(L, 'ADBE Linear Wipe', 'Brush Wipe');
+            UK.set(w, 'ADBE Linear Wipe-0002', A.wipeAngle(c));
+            UK.set(w, 'ADBE Linear Wipe-0003', 20);
+            P.anim(c, UK.p(w, 'ADBE Linear Wipe-0001'), 100, 0, c.t0, c.t1);
+            var re = UK.addFx(L, 'ADBE Roughen Edges', 'Brush Edges');
+            UK.set(re, 'ADBE Roughen Edges-0001', 1);
+            UK.set(re, 'ADBE Roughen Edges-0003', 60 * c.strength);
+            UK.set(re, 'ADBE Roughen Edges-0004', 0.6);
+            UK.set(re, 'ADBE Roughen Edges-0006', 150);
+            UK.set(re, 'ADBE Roughen Edges-0009', 3);
+            UK.expr(re, ['ADBE Roughen Edges-0010', 'Evolution'], 'time * 90');
+            // края рваные только во время анимации
+            P.anim(c, UK.p(re, 'ADBE Roughen Edges-0003'), 60 * c.strength, 0, c.isOut ? c.t0 : c.t1 - c.fd * 3, c.isOut ? c.t0 + c.fd * 3 : c.t1, 'linear');
+        }
+    });
+
+    def({
+        key: 'proInk', preview: 'iris',
+        nameIn: 'Ink Reveal · Чернильная клякса', nameOut: 'Ink Hide · Клякса закрывает',
+        descIn: 'Эллиптическая маска растёт из центра как клякса: рваный край (Roughen Edges) + турбулентность.',
+        tags: 'ink blob splash клякса чернила',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0);
+            var cx = r.l + r.w / 2, cy = r.t + r.h / 2, R = Math.sqrt(r.w * r.w + r.h * r.h) * 0.75;
+            var m = A.addMask(L, 'Ink');
+            P.anim(c, m.property('ADBE Mask Shape'), P.ellipse(cx, cy, 2, 2), P.ellipse(cx, cy, R, R), c.t0, c.t1, c.ease);
+            m.property('ADBE Mask Feather').setValue([10, 10]);
+            var re = UK.addFx(L, 'ADBE Roughen Edges', 'Ink Edges');
+            UK.set(re, 'ADBE Roughen Edges-0001', 1);
+            UK.set(re, 'ADBE Roughen Edges-0003', 80 * c.strength);
+            UK.set(re, 'ADBE Roughen Edges-0004', 0.3);
+            UK.set(re, 'ADBE Roughen Edges-0006', 220);
+            UK.set(re, 'ADBE Roughen Edges-0009', 4);
+            UK.expr(re, ['ADBE Roughen Edges-0010', 'Evolution'], 'time * 60');
+            var td = UK.addFx(L, 'ADBE Turbulent Displace', 'Ink Turb');
+            UK.set(td, 'ADBE Turbulent Displace-0003', 60);
+            UK.set(td, 'ADBE Turbulent Displace-0005', 2);
+            UK.expr(td, ['ADBE Turbulent Displace-0006', 'Evolution'], 'time * 80');
+            P.anim(c, UK.p(td, 'ADBE Turbulent Displace-0002'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+        }
+    });
+
+    def({
+        key: 'proLiquid', preview: 'liquid',
+        nameIn: 'Liquid Wipe · Жидкая шторка', nameOut: 'Liquid Hide · Жидкое стекание',
+        descIn: 'Linear Wipe с мягким краем + Wave Warp + Turbulent Displace: край шторки «течёт» по направлению.',
+        tags: 'liquid wave fluid жидкость волна',
+        build: function (c) {
+            var L = c.layer;
+            var w = UK.addFx(L, 'ADBE Linear Wipe', 'Liquid Wipe');
+            UK.set(w, 'ADBE Linear Wipe-0002', A.wipeAngle(c));
+            UK.set(w, 'ADBE Linear Wipe-0003', 60);
+            P.anim(c, UK.p(w, 'ADBE Linear Wipe-0001'), 100, 0, c.t0, c.t1);
+            var ww = UK.addFx(L, 'ADBE Wave Warp', 'Liquid Wave');
+            UK.set(ww, 'ADBE Wave Warp-0001', 1);
+            UK.set(ww, 'ADBE Wave Warp-0003', 160);
+            UK.set(ww, 'ADBE Wave Warp-0004', A.horiz(c) ? 90 : 0);
+            UK.set(ww, 'ADBE Wave Warp-0005', 1.2);
+            UK.set(ww, 'ADBE Wave Warp-0006', 1);
+            P.anim(c, UK.p(ww, 'ADBE Wave Warp-0002'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            var td = UK.addFx(L, 'ADBE Turbulent Displace', 'Liquid Turb');
+            UK.set(td, 'ADBE Turbulent Displace-0003', 90);
+            UK.expr(td, ['ADBE Turbulent Displace-0006', 'Evolution'], 'time * 120');
+            P.anim(c, UK.p(td, 'ADBE Turbulent Displace-0002'), 50 * c.strength, 0, c.t0, c.t1, 'expoOut');
+        }
+    });
+
+    def({
+        key: 'proLight', preview: 'glow',
+        nameIn: 'Light Reveal · Из света', nameOut: 'Light Burn Out · Выгорание в свет',
+        descIn: 'Слой проявляется из яркого свечения: Glow + Exposure падают, масштаб 110 → 100 %.',
+        descOut: 'Слой пересвечивается и растворяется в свечении.',
+        tags: 'light glow exposure bright свет свечение',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), v = vis(c, sc);
+            P.anim(c, sc, A.scaleXY(v, 1 + 0.1 * c.strength, 1 + 0.1 * c.strength), v, c.t0, c.t1);
+            var g = UK.addFx(L, 'ADBE Glo2', 'Light Glow');
+            UK.set(g, 'ADBE Glo2-0002', 30); UK.set(g, 'ADBE Glo2-0003', 200);
+            P.anim(c, UK.p(g, 'ADBE Glo2-0004'), 4 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            var ex = UK.addFx(L, 'ADBE Exposure2', 'Light Exposure');
+            P.anim(c, UK.p(ex, ['ADBE Exposure2-0003', 'Exposure']), 3 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.35);
+        }
+    });
+
+    def({
+        key: 'proLens', preview: 'bulge',
+        nameIn: 'Lens Reveal · Через линзу', nameOut: 'Lens Hide · Уход в линзу',
+        descIn: 'Optics Compensation (FOV 120 → 0) + масштаб + размытие: слой «выпрямляется» из линзового искажения.',
+        tags: 'lens optics fisheye линза',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), v = vis(c, sc);
+            var oc = UK.addFx(L, 'ADBE Optics Compensation', 'Lens');
+            UK.set(oc, 'ADBE Optics Compensation-0002', 1);
+            P.anim(c, UK.p(oc, 'ADBE Optics Compensation-0001'), 120 * UK.clamp(c.strength, 0.3, 1.4), 0, c.t0, c.t1);
+            P.anim(c, sc, A.scaleXY(v, 1.3, 1.3), v, c.t0, c.t1);
+            var b = UK.addFx(L, 'ADBE Gaussian Blur 2', 'Lens Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            P.anim(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 30 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.4);
+        }
+    });
+
+    def({
+        key: 'proDepth', preview: 'blurIn', previewOut: 'blurOut',
+        nameIn: 'Depth Push · Из глубины', nameOut: 'Depth Pull · В глубину',
+        descIn: 'Масштаб 60 → 100 % с Gaussian Blur 30 → 0 (размытие отстаёт) и проявлением — ощущение глубины резкости.',
+        tags: 'depth focus blur scale глубина резкость',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), v = vis(c, sc);
+            var k = 1 - 0.4 * UK.clamp(c.strength, 0.2, 2);
+            P.anim(c, sc, A.scaleXY(v, k, k), v, c.t0, c.t1);
+            UK.applyEaseExpr(sc, c.ease, c);
+            var b = UK.addFx(L, 'ADBE Gaussian Blur 2', 'Depth Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            var bt = c.isOut ? [c.t0 + c.dur * 0.3, c.t1] : [c.t0, c.t1 - c.dur * 0.15];
+            P.anim(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 30 * c.strength, 0, bt[0], bt[1], 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.5);
+        }
+    });
+
+    def({
+        key: 'proParallax', preview: 'slideIn', previewOut: 'slideOut',
+        nameIn: 'Parallax Layers · Параллакс по слоям', nameOut: 'Parallax Out · Параллакс-уход',
+        descIn: 'Для нескольких выделенных слоёв: глубина по порядку — верхние слои едут дальше и быстрее, нижние — меньше. С одним слоем = мягкий slide.',
+        tags: 'parallax depth layers multi параллакс',
+        build: function (c) {
+            var n = c.layers.length || 1, depth = (c.i + 1) / n; // 1 = самый «близкий»
+            var pos = tr(c, 'ADBE Position'), v = vis(c, pos);
+            var dist = UK.exitDistance(c.layer, c.comp, c.dirV, c.t0) * (0.25 + 0.75 * depth) * c.strength;
+            var span = c.dur * (0.6 + 0.4 * (1 - depth));
+            var ta = c.isOut ? c.t1 - span : c.t0, tb = c.isOut ? c.t1 : c.t0 + span;
+            P.anim(c, pos, UK.vecAdd(v, UK.vecMul(c.dirV, dist)), v, ta, tb);
+            UK.applyEaseExpr(pos, c.ease, c);
+            P.fade(c, c.layer, ta, ta + span * 0.5);
+            UK.motionBlur(c.layer, c.comp);
+        }
+    });
+
+    def({
+        key: 'proZoomThrough', preview: 'zoom',
+        nameIn: 'Zoom Through · Пролёт сквозь', nameOut: 'Zoom Through Out · Пролёт мимо камеры',
+        descIn: 'Масштаб 160 → 100 % с радиальным зум-размытием и проявлением — слой «прилетает» из камеры.',
+        tags: 'zoom through radial blur пролёт зум',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), v = vis(c, sc), k = 1 + 0.6 * c.strength;
+            P.anim(c, sc, A.scaleXY(v, k, k), v, c.t0, c.t1);
+            UK.applyEaseExpr(sc, c.ease, c);
+            var rb = UK.addFx(L, 'CC Radial Fast Blur', 'Zoom Blur');
+            UK.set(rb, 'CC Radial Fast Blur-0003', 2);
+            var r = A.rect(L, c.t0);
+            UK.set(rb, 'CC Radial Fast Blur-0001', [r.l + r.w / 2, r.t + r.h / 2]);
+            P.anim(c, UK.p(rb, 'CC Radial Fast Blur-0002'), 70 * UK.clamp(c.strength, 0.2, 1.3), 0, c.t0, c.t1, 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.4);
+        }
+    });
+
+    def({
+        key: 'proKinetic', preview: 'slideIn', previewOut: 'slideOut',
+        nameIn: 'Kinetic Slide · Кинетический слайд', nameOut: 'Kinetic Slide Out · Кинетический уход',
+        descIn: 'Slide по направлению с наклоном (skew) в сторону движения, перелётом и лёгким squash по оси движения.',
+        tags: 'kinetic skew slide squash кинетика наклон',
+        build: function (c) {
+            var L = c.layer, pos = tr(c, 'ADBE Position'), v = vis(c, pos), sg = A.sign(c);
+            var dist = UK.exitDistance(L, c.comp, c.dirV, c.t0) * (0.4 + 0.6 * c.strength);
+            P.anim(c, pos, UK.vecAdd(v, UK.vecMul(c.dirV, dist)), v, c.t0, c.t1, 'expoOut');
+            A.force(pos, 'back', c);
+            var tf = UK.addFx(L, 'ADBE Geometry2', 'Kinetic Skew');
+            UK.set(tf, 'ADBE Geometry2-0007', A.horiz(c) ? 0 : 90);
+            UK.set(tf, 'ADBE Geometry2-0010', 0); UK.set(tf, 'ADBE Geometry2-0011', 360);
+            P.anim3(c, UK.p(tf, 'ADBE Geometry2-0006'), -25 * sg * c.strength, 8 * sg * c.strength, 0, c.t0, c.t1, 'smooth', 0.7);
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            var sq = A.horiz(c) ? A.scaleXY(sv, 1.25, 0.85) : A.scaleXY(sv, 0.85, 1.25);
+            P.anim3(c, sc, sq, A.scaleXY(sv, 1.0, 1.0), sv, c.t0, c.t1, 'smooth', 0.75);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proElasticDrop', preview: 'bounce',
+        nameIn: 'Elastic Drop · Падение с отскоком', nameOut: 'Elastic Lift · Подскок и улёт',
+        descIn: 'Падение сверху (или по направлению) с bounce-выражением и squash по вертикали в момент приземления.',
+        tags: 'drop bounce squash elastic падение отскок',
+        build: function (c) {
+            var L = c.layer, pos = tr(c, 'ADBE Position'), v = vis(c, pos);
+            var dir = c.dirV[1] !== 0 ? c.dirV : [0, -1];
+            var dist = UK.exitDistance(L, c.comp, dir, c.t0) * UK.clamp(c.strength, 0.3, 1.5);
+            P.anim(c, pos, UK.vecAdd(v, UK.vecMul(dir, dist)), v, c.t0, c.t1, 'expoOut');
+            A.force(pos, 'bounce', c);
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            var tHit = c.isOut ? c.t0 : c.t1;
+            var k = UK.keys(sc, [[tHit - c.fd * 2, sv], [tHit, A.scaleXY(sv, 1.15, 0.85)], [tHit + c.fd * 4, sv]], 'smooth');
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proSpinPop', preview: 'spin',
+        nameIn: 'Spin Pop · Вращение с ростом', nameOut: 'Spin Pop Out · Вращение в ноль',
+        descIn: 'Rotation 180° → 0 (сторона по направлению) + масштаб 0 → 100 % с перелётом и motion blur.',
+        tags: 'spin rotate pop scale вращение',
+        build: function (c) {
+            var L = c.layer, rot = tr(c, 'ADBE Rotate Z'), rv = vis(c, rot), sg = A.sign(c);
+            P.anim(c, rot, rv - 180 * sg * UK.clamp(c.strength, 0.25, 2), rv, c.t0, c.t1);
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            P.anim(c, sc, UK.vecMul(sv, 0), sv, c.t0, c.t1);
+            A.force(sc, 'back', c);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proFlipShadow', preview: 'flip',
+        nameIn: 'Flip 3D + Shadow · Переворот с тенью', nameOut: 'Flip 3D + Shadow Out · Уход переворотом',
+        descIn: '3D-переворот вокруг оси (по направлению) с растущей тенью (Drop Shadow) и лёгким масштабом.',
+        tags: 'flip 3d shadow card переворот тень',
+        build: function (c) {
+            var L = c.layer; UK.to3D(L);
+            var rp = A.horiz(c) ? L.transform.yRotation : L.transform.xRotation, rv = vis(c, rp), sg = A.sign(c);
+            P.anim(c, rp, rv - 90 * sg, rv, c.t0, c.t1);
+            UK.applyEaseExpr(rp, c.ease, c);
+            var ds = UK.addFx(L, 'ADBE Drop Shadow', 'Flip Shadow');
+            UK.set(ds, 'ADBE Drop Shadow-0001', [0, 0, 0, 1]);
+            UK.set(ds, 'ADBE Drop Shadow-0003', 135);
+            UK.set(ds, 'ADBE Drop Shadow-0005', 40);
+            P.anim(c, UK.p(ds, 'ADBE Drop Shadow-0002'), 0, 128 * UK.clamp(c.strength, 0, 1.5), c.t0, c.t1, 'smooth');
+            P.anim(c, UK.p(ds, 'ADBE Drop Shadow-0004'), 60, 14, c.t0, c.t1, 'smooth');
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            P.anim(c, sc, A.scaleXY(sv, 0.9, 0.9), sv, c.t0, c.t1);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proCardFlip', preview: 'flip',
+        nameIn: 'Card Flip · Карточка', nameOut: 'Card Flip Out · Карточка уходит',
+        descIn: 'Переворот на 180° (3D) с провалом масштаба в середине (эффект глубины) и проявлением на первой трети.',
+        tags: 'card flip 3d карточка',
+        build: function (c) {
+            var L = c.layer; UK.to3D(L);
+            var rp = A.horiz(c) ? L.transform.yRotation : L.transform.xRotation, rv = vis(c, rp), sg = A.sign(c);
+            P.anim(c, rp, rv - 180 * sg, rv, c.t0, c.t1);
+            UK.applyEaseExpr(rp, c.ease, c);
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            var mid = c.t0 + c.dur * 0.5;
+            UK.keys(sc, [[c.t0, c.isOut ? sv : A.scaleXY(sv, 0.9, 0.9)], [mid, A.scaleXY(sv, 0.75, 0.75)], [c.t1, c.isOut ? A.scaleXY(sv, 0.9, 0.9) : sv]], 'smooth');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.3);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proPixelSort', preview: 'pixel',
+        nameIn: 'Pixel Sort · Пиксельное растяжение', nameOut: 'Pixel Sort Out · Распад в пиксели',
+        descIn: 'Mosaic + Minimax (вытягивание пикселей по оси направления) + wipe: слой «собирается» из пиксельных полос.',
+        tags: 'pixel sort mosaic minimax stretch пиксели',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0);
+            var mm = UK.addFx(L, 'ADBE Minimax', 'Pixel Stretch');
+            UK.set(mm, 'ADBE Minimax-0001', 2);
+            UK.set(mm, 'ADBE Minimax-0003', 1);
+            UK.set(mm, 'ADBE Minimax-0004', A.horiz(c) ? 2 : 3);
+            P.anim(c, UK.p(mm, 'ADBE Minimax-0002'), Math.round(60 * c.strength), 0, c.t0, c.t1, 'expoOut');
+            var mos = UK.addFx(L, 'ADBE Mosaic', 'Pixel Blocks');
+            UK.set(mos, 'ADBE Mosaic-0003', 1);
+            var maxB = Math.max(64, Math.round(Math.max(r.w, r.h)));
+            P.anim(c, UK.p(mos, 'ADBE Mosaic-0001'), A.horiz(c) ? 6 : Math.round(maxB / 4), maxB, c.t0, c.t1, 'expoOut');
+            P.anim(c, UK.p(mos, 'ADBE Mosaic-0002'), A.horiz(c) ? Math.round(maxB / 4) : 6, maxB, c.t0, c.t1, 'expoOut');
+            var w = UK.addFx(L, 'ADBE Linear Wipe', 'Pixel Wipe');
+            UK.set(w, 'ADBE Linear Wipe-0002', A.wipeAngle(c));
+            UK.set(w, 'ADBE Linear Wipe-0003', 120);
+            P.anim(c, UK.p(w, 'ADBE Linear Wipe-0001'), 100, 0, c.t0, c.t0 + c.dur * 0.8);
+        }
+    });
+
+    def({
+        key: 'proGlitchSlices', preview: 'glitch',
+        nameIn: 'Glitch Slices · Глитч-полосы', nameOut: 'Glitch Slices Out · Глитч-распад',
+        descIn: 'Слой режется на 6 полос; каждая случайно дёргается hold-ключами со сдвигом каналов (Shift Channels на дублях), затухая к концу.',
+        tags: 'glitch slices rgb digital глитч полосы',
+        build: function (c) {
+            var n = 6, sl = P.slices(c, n), i, j;
+            var steps = Math.max(4, Math.round(c.dur / c.fd / 2)), step = c.dur / steps;
+            for (i = 0; i < n; i++) {
+                var L = sl[i].layer, pos = L.transform.position, v = vis(c, pos);
+                var amp = (40 + 60 * Math.random()) * c.strength;
+                for (j = 0; j <= steps; j++) {
+                    var t = c.t0 + j * step, k = c.isOut ? j / steps : 1 - j / steps;
+                    var p = v.slice();
+                    if (k > 0 && Math.random() < 0.7) {
+                        p[0] = v[0] + UK.rnd(-amp, amp) * k * (A.horiz(c) ? 1 : 0.3);
+                        p[1] = v[1] + UK.rnd(-amp, amp) * k * (A.horiz(c) ? 0.3 : 1);
+                    }
+                    UK.setHold(pos, UK.key(pos, t, p));
+                }
+                if (i % 3 !== 0) {
+                    // сдвиг каналов на части полос: во время глитча — только красный или синий, в конце — норма
+                    var sh = UK.addFx(L, 'ADBE Shift Channels', 'Glitch RGB');
+                    var shifted = i % 3 === 1 ? [1, 10, 10] : [10, 10, 3], normal = [1, 2, 3];
+                    var tShift = c.isOut ? c.t0 + c.fd * 2 : c.t0, tNorm = c.isOut ? c.t0 : c.t1 - c.fd;
+                    var chans = ['ADBE Shift Channels-0002', 'ADBE Shift Channels-0003', 'ADBE Shift Channels-0004'];
+                    for (j = 0; j < 3; j++) {
+                        var cp = UK.p(sh, chans[j]);
+                        UK.setHold(cp, UK.key(cp, tShift, shifted[j]));
+                        UK.setHold(cp, UK.key(cp, tNorm, normal[j]));
+                    }
+                }
+            }
+            P.fade(c, sl[0].layer, c.t0, c.t0 + c.fd * 2, 'linear');
+        }
+    });
+
+    def({
+        key: 'proChromaPop', preview: 'rgb',
+        nameIn: 'Chromatic Pop · Pop с хроматикой', nameOut: 'Chromatic Pop Out · Хроматический уход',
+        descIn: 'Scale pop с перелётом; два дубля (красный и синий каналы, Add) разъезжаются и гаснут — хроматическая аберрация в момент появления.',
+        tags: 'chromatic rgb pop aberration хроматика',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            P.anim(c, sc, A.scaleXY(sv, 0.6, 0.6), sv, c.t0, c.t1);
+            A.force(sc, 'back', c);
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.3);
+            var off = 30 * c.strength, defs = [[1, 10, 10, [-off, 0]], [10, 10, 3, [off, 0]]], i;
+            for (i = 0; i < 2; i++) {
+                var d = L.duplicate();
+                d.name = UK.PREFIX + L.name + (i === 0 ? ' R' : ' B');
+                d.blendingMode = BlendingMode.ADD;
+                var sh = UK.addFx(d, 'ADBE Shift Channels', 'Chroma');
+                UK.set(sh, 'ADBE Shift Channels-0002', defs[i][0]);
+                UK.set(sh, 'ADBE Shift Channels-0003', defs[i][1]);
+                UK.set(sh, 'ADBE Shift Channels-0004', defs[i][2]);
+                var pos = d.transform.position, pv = vis(c, pos);
+                var o = A.horiz(c) ? defs[i][3] : [0, defs[i][3][0]];
+                P.anim(c, pos, UK.vecAdd(pv, o), pv, c.t0, c.t1, 'expoOut');
+                var op = d.transform.opacity;
+                if (c.isOut) UK.key2(op, c.t0, 0, c.t1, 80, 'expoIn');
+                else UK.key2(op, c.t0, 80, c.t1, 0, 'expoOut');
+            }
+        }
+    });
+
+    def({
+        key: 'proBlocks', preview: 'typewriter',
+        nameIn: 'Block Wipe · Блочное появление', nameOut: 'Block Hide · Блочное исчезновение',
+        descIn: 'Linear Wipe hold-ключами по 8 шагам — «цифровое», ступенчатое открытие по направлению (как печать блоками).',
+        tags: 'block step wipe digital блоки ступени',
+        build: function (c) {
+            var w = UK.addFx(c.layer, 'ADBE Linear Wipe', 'Block Wipe');
+            UK.set(w, 'ADBE Linear Wipe-0002', A.wipeAngle(c));
+            UK.set(w, 'ADBE Linear Wipe-0003', 0);
+            var p = UK.p(w, 'ADBE Linear Wipe-0001'), n = Math.max(3, Math.round(8 * UK.clamp(c.strength, 0.4, 2))), i;
+            for (i = 0; i <= n; i++) {
+                var t = c.t0 + c.dur * i / n, k = i / n;
+                var val = c.isOut ? 100 * k : 100 * (1 - k);
+                UK.setHold(p, UK.key(p, t, val));
+            }
+        }
+    });
+
+    def({
+        key: 'proShutter', preview: 'blinds',
+        nameIn: 'Shutter · Жалюзи с размытием', nameOut: 'Shutter Out · Жалюзи закрываются',
+        descIn: 'Venetian Blinds (направление по настройке) с растушёвкой + направленный смаз, затухающий к концу.',
+        tags: 'shutter blinds blur жалюзи',
+        build: function (c) {
+            var L = c.layer;
+            var vb = UK.addFx(L, 'ADBE Venetian Blinds', 'Shutter');
+            UK.set(vb, 'ADBE Venetian Blinds-0002', A.horiz(c) ? 90 : 0);
+            UK.set(vb, 'ADBE Venetian Blinds-0003', Math.round(40 + 60 * c.strength));
+            UK.set(vb, 'ADBE Venetian Blinds-0004', 12);
+            P.anim(c, UK.p(vb, 'ADBE Venetian Blinds-0001'), 100, 0, c.t0, c.t1);
+            var mb = UK.addFx(L, 'ADBE Motion Blur', 'Shutter Blur');
+            UK.set(mb, 'ADBE Motion Blur-0001', A.blurDir(c));
+            P.anim(c, UK.p(mb, 'ADBE Motion Blur-0002'), 60 * c.strength, 0, c.t0, c.t1, 'expoOut');
+        }
+    });
+
+    def({
+        key: 'proClock', preview: 'iris',
+        nameIn: 'Clock Wipe Soft · Мягкая часовая шторка', nameOut: 'Clock Wipe Soft Out · Часовая шторка закрывает',
+        descIn: 'Radial Wipe с широкой растушёвкой и свечением края (Glow). Направление задаёт сторону вращения.',
+        tags: 'clock radial wipe glow часовая шторка',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0);
+            var rw = UK.addFx(L, 'ADBE Radial Wipe', 'Clock');
+            UK.set(rw, 'ADBE Radial Wipe-0002', A.horiz(c) ? 0 : 180);
+            UK.set(rw, 'ADBE Radial Wipe-0003', [r.l + r.w / 2, r.t + r.h / 2]);
+            UK.set(rw, 'ADBE Radial Wipe-0004', A.sign(c) > 0 ? 1 : 2);
+            UK.set(rw, 'ADBE Radial Wipe-0005', 80 * c.strength);
+            P.anim(c, UK.p(rw, 'ADBE Radial Wipe-0001'), 100, 0, c.t0, c.t1);
+            var g = UK.addFx(L, 'ADBE Glo2', 'Clock Glow');
+            UK.set(g, 'ADBE Glo2-0001', 2); // alpha
+            UK.set(g, 'ADBE Glo2-0003', 40);
+            P.anim(c, UK.p(g, 'ADBE Glo2-0004'), 1.5 * c.strength, 0, c.isOut ? c.t0 : c.t1 - c.dur * 0.3, c.isOut ? c.t0 + c.dur * 0.3 : c.t1, 'smooth');
+        }
+    });
+
+    def({
+        key: 'proIrisGlow', preview: 'iris',
+        nameIn: 'Iris Glow · Диафрагма со свечением', nameOut: 'Iris Glow Out · Диафрагма закрывается',
+        descIn: 'Iris Wipe (круг из центра) с мягким краем и свечением альфы по контуру.',
+        tags: 'iris circle glow диафрагма круг',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0), R = Math.sqrt(r.w * r.w + r.h * r.h) * 0.55;
+            var iw = UK.addFx(L, 'ADBE Iris Wipe', 'Iris');
+            UK.set(iw, 'ADBE Iris Wipe-0001', [r.l + r.w / 2, r.t + r.h / 2]);
+            UK.set(iw, 'ADBE Iris Wipe-0002', 32);
+            UK.set(iw, 'ADBE Iris Wipe-0007', 60 * c.strength);
+            P.anim(c, UK.p(iw, 'ADBE Iris Wipe-0003'), 0, R, c.t0, c.t1);
+            var g = UK.addFx(L, 'ADBE Glo2', 'Iris Glow');
+            UK.set(g, 'ADBE Glo2-0001', 2);
+            UK.set(g, 'ADBE Glo2-0003', 60);
+            P.anim(c, UK.p(g, 'ADBE Glo2-0004'), 2 * c.strength, 0, c.t0, c.t1, 'smooth');
+        }
+    });
+
+    def({
+        key: 'proSoftFocus', preview: 'blurIn', previewOut: 'blurOut',
+        nameIn: 'Soft Focus In · Из расфокуса', nameOut: 'Soft Focus Out · В расфокус',
+        descIn: 'Gaussian Blur 40 → 0 с пересветом (Brightness +40 → 0) и проявлением — «наведение резкости» с лёгким свечением.',
+        tags: 'focus blur soft bright расфокус',
+        build: function (c) {
+            var L = c.layer;
+            var b = UK.addFx(L, 'ADBE Gaussian Blur 2', 'Focus Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            P.anim(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            var bc = UK.addFx(L, 'ADBE Brightness & Contrast 2', 'Focus Bright');
+            P.anim(c, UK.p(bc, 'ADBE Brightness & Contrast 2-0001'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.5);
+        }
+    });
+
+    def({
+        key: 'proStretchSnap', preview: 'stretch',
+        nameIn: 'Stretch Snap · Растяжение с щелчком', nameOut: 'Stretch Snap Out · Схлопывание',
+        descIn: 'Масштаб по оси направления 0 → 130 → 100 % (перпендикулярная ось 100 → 90 → 100): резкое, «резиновое» появление.',
+        tags: 'stretch snap scale rubber растяжение',
+        build: function (c) {
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc), k = 1 + 0.3 * c.strength;
+            var hidden = A.horiz(c) ? A.scaleXY(sv, 0, 1) : A.scaleXY(sv, 1, 0);
+            var mid = A.horiz(c) ? A.scaleXY(sv, k, 0.9) : A.scaleXY(sv, 0.9, k);
+            P.anim3(c, sc, hidden, mid, sv, c.t0, c.t1, 'smooth', 0.6);
+            UK.motionBlur(c.layer, c.comp);
+        }
+    });
+
+    def({
+        key: 'proWave', preview: 'wave',
+        nameIn: 'Wave In · Волной', nameOut: 'Wave Out · Волна уносит',
+        descIn: 'Wave Warp (высота 60 → 0) + проявление: слой «успокаивается» из волны. Направление задаёт ось волны.',
+        tags: 'wave warp волна',
+        build: function (c) {
+            var L = c.layer;
+            var ww = UK.addFx(L, 'ADBE Wave Warp', 'Wave');
+            UK.set(ww, 'ADBE Wave Warp-0003', 120);
+            UK.set(ww, 'ADBE Wave Warp-0004', A.horiz(c) ? 0 : 90);
+            UK.set(ww, 'ADBE Wave Warp-0005', 1.5);
+            UK.set(ww, 'ADBE Wave Warp-0006', 1);
+            P.anim(c, UK.p(ww, 'ADBE Wave Warp-0002'), 60 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            P.fade(c, L, c.t0, c.t0 + c.dur * 0.5);
+        }
+    });
+
+    def({
+        key: 'proSwingDoor', preview: 'swing',
+        nameIn: 'Swing Door · Дверь', nameOut: 'Swing Door Out · Дверь закрывается',
+        descIn: 'Якорь переносится на край слоя по направлению; 3D-поворот -100° → 0 с перелётом — как открывающаяся дверь.',
+        tags: 'door swing hinge 3d дверь петля',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0); UK.to3D(L);
+            var ax = r.l + (c.dirId === 'R' ? r.w : (c.dirId === 'L' ? 0 : r.w / 2));
+            var ay = r.t + (c.dirId === 'D' ? r.h : (c.dirId === 'U' ? 0 : r.h / 2));
+            A.moveAnchor(L, ax, ay, c.t0);
+            var rp = A.horiz(c) ? L.transform.yRotation : L.transform.xRotation, rv = vis(c, rp);
+            var sg = c.dirId === 'R' || c.dirId === 'U' ? -1 : 1;
+            P.anim(c, rp, rv + 100 * sg * UK.clamp(c.strength, 0.3, 1.5), rv, c.t0, c.t1);
+            A.force(rp, 'back', c);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proUnroll', preview: 'roll',
+        nameIn: 'Unroll · Разворачивание', nameOut: 'Roll Up · Сворачивание',
+        descIn: 'Якорь на краю по направлению; масштаб по оси 0 → 100 % со skew-«заломом» (Transform) — разворачивается как лист.',
+        tags: 'unroll roll paper scroll разворот свиток',
+        build: function (c) {
+            var L = c.layer, r = A.rect(L, c.t0), sg = A.sign(c);
+            var ax = r.l + (c.dirId === 'R' ? 0 : (c.dirId === 'L' ? r.w : r.w / 2));
+            var ay = r.t + (c.dirId === 'D' ? 0 : (c.dirId === 'U' ? r.h : r.h / 2));
+            A.moveAnchor(L, ax, ay, c.t0);
+            var sc = tr(c, 'ADBE Scale'), sv = vis(c, sc);
+            P.anim(c, sc, A.horiz(c) ? A.scaleXY(sv, 0, 1) : A.scaleXY(sv, 1, 0), sv, c.t0, c.t1);
+            var tf = UK.addFx(L, 'ADBE Geometry2', 'Unroll Skew');
+            UK.set(tf, 'ADBE Geometry2-0007', A.horiz(c) ? 90 : 0);
+            UK.set(tf, 'ADBE Geometry2-0010', 0); UK.set(tf, 'ADBE Geometry2-0011', 360);
+            P.anim3(c, UK.p(tf, 'ADBE Geometry2-0006'), 35 * sg * c.strength, -6 * sg * c.strength, 0, c.t0, c.t1, 'smooth', 0.7);
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    def({
+        key: 'proZoomRotate', preview: 'zoom',
+        nameIn: 'Zoom Rotate Blur · Зум с вращением', nameOut: 'Zoom Rotate Blur Out · Улёт с вращением',
+        descIn: 'Масштаб 0 → 100 % + поворот 90° → 0 + радиальное размытие (spin) с перелётом — энергичное появление.',
+        tags: 'zoom rotate spin radial blur зум вращение',
+        build: function (c) {
+            var L = c.layer, sc = tr(c, 'ADBE Scale'), sv = vis(c, sc), rot = tr(c, 'ADBE Rotate Z'), rv = vis(c, rot), sg = A.sign(c);
+            P.anim(c, sc, UK.vecMul(sv, 0), sv, c.t0, c.t1);
+            A.force(sc, 'back', c);
+            P.anim(c, rot, rv + 90 * sg * c.strength, rv, c.t0, c.t1);
+            var rb = UK.addFx(L, 'ADBE Radial Blur', 'Spin Blur');
+            UK.set(rb, 'ADBE Radial Blur-0003', 1);
+            var r = A.rect(L, c.t0);
+            UK.set(rb, 'ADBE Radial Blur-0002', [r.l + r.w / 2, r.t + r.h / 2]);
+            P.anim(c, UK.p(rb, 'ADBE Radial Blur-0001'), 40 * c.strength, 0, c.t0, c.t1, 'expoOut');
+            UK.motionBlur(L, c.comp);
+        }
+    });
+
+    P.register('in');
+})();
+
+
+// ---- src/presets/33_out_pro.jsx
+// =============================================================================
+//  PRO-анимации исчезновения (Out) — зеркала определений из 32_in_pro.jsx
+//  (UK.P.defs, register('out'): ключи mirror=true, конец на out-point).
+// =============================================================================
+(function () {
+    if (UK.P && UK.P.register) UK.P.register('out');
+})();
+
+
 // ---- src/presets/40_trans.jsx
 // =============================================================================
 //  Переходы (cat: 'trans', needs: 'trans')
@@ -3581,6 +4306,657 @@ UK.PREVIEW = UK.PREVIEW || {};
 })();
 
 
+// ---- src/presets/41_trans_pro.jsx
+// =============================================================================
+//  PRO-переходы (cat: 'trans', needs: 'trans') — многослойные, «дизайнерские».
+//  Все работают при A+B / только B / только A.
+// =============================================================================
+(function () {
+    var A = UK.A;
+
+    // ------------------------------------------------------------ helpers (локальные копии)
+    function F(x) { return String(UK.fmt(x, 4)); }
+    function isArr(v) { return v !== null && typeof v === 'object' && typeof v.length === 'number'; }
+    function V(v) { return isArr(v) ? '[' + v.join(', ') + ']' : String(UK.fmt(v, 4)); }
+    function addv(a, b) { return isArr(a) ? UK.vecAdd(a, b) : a + b; }
+    function horiz(c) { return c.dirV[0] !== 0; }
+    function sgn(c) { return horiz(c) ? c.dirV[0] : c.dirV[1]; }
+    function need(c) { if (!c.A && !c.B) throw new Error('Выделите слой(и) на склейке (2 соседних слоя или 1 слой + курсор).'); }
+    function center(c) { return UK.center(c.comp); }
+    function sub(c, L) { return { opts: c.opts, strength: c.strength, layer: L, comp: c.comp }; }
+    function tB(c) { return (c.B && c.B.inPoint < c.cut - c.fd / 2) ? [c.t0, c.t1] : [c.cut, c.t1]; }
+    function tA(c) { return (c.A && c.A.outPoint > c.cut + c.fd / 2) ? [c.t0, c.t1] : [c.t0, c.cut]; }
+    function lrect(L, c) {
+        var r;
+        try { r = L.sourceRectAtTime(c.cut, false); r = { l: r.left, t: r.top, w: r.width, h: r.height }; } catch (e) { r = null; }
+        if (!r || !(r.w > 0) || !(r.h > 0)) r = { l: 0, t: 0, w: L.width || c.comp.width, h: L.height || c.comp.height };
+        return r;
+    }
+    /** base → base+delta (cut) → base; при контролах — слайдер + выражение */
+    function sym(c, prop, base, delta, nick, ease) {
+        if (c.opts.controls) {
+            var ref = UK.cv(c, nick, 100);
+            prop.expression =
+                'var amp = ' + ref + ' / 100;\n' +
+                'var e = (time < ' + F(c.cut) + ') ? ease(time, ' + F(c.t0) + ', ' + F(c.cut) + ', 0, 1) : ease(time, ' + F(c.cut) + ', ' + F(c.t1) + ', 1, 0);\n' +
+                V(base) + ' + ' + V(delta) + ' * amp * e';
+        } else {
+            UK.keys(prop, [[c.t0, base], [c.cut, addv(base, delta)], [c.t1, base]], ease || 'expoInOut');
+        }
+    }
+    /** прыжок: base→base+dA (к cut), затем base+dB→base */
+    function jump(c, prop, base, dA, dB, nick) {
+        if (c.opts.controls) {
+            var ref = UK.cv(c, nick, 100);
+            prop.expression =
+                'var amp = ' + ref + ' / 100;\n' +
+                '(time < ' + F(c.cut) + ') ? ease(time, ' + F(c.t0) + ', ' + F(c.cut) + ', ' + V(base) + ', ' + V(base) + ' + ' + V(dA) + ' * amp) : ' +
+                'ease(time, ' + F(c.cut) + ', ' + F(c.t1) + ', ' + V(base) + ' + ' + V(dB) + ' * amp, ' + V(base) + ')';
+        } else {
+            UK.key2(prop, c.t0, base, c.cut, addv(base, dA), 'expoIn');
+            UK.key2(prop, Math.min(c.cut + c.fd, c.t1), addv(base, dB), c.t1, base, 'expoOut');
+        }
+    }
+    /** корр. слой + (опц.) Motion Tile 300% mirror + Transform (shutter 360) */
+    function adjTT(c, name, withTile, layer) {
+        var adj = layer || c.adj(name), r = { adj: adj };
+        if (withTile) {
+            r.tile = UK.addFx(adj, 'ADBE Tile', 'Tile');
+            UK.set(r.tile, 'ADBE Tile-0004', 300);
+            UK.set(r.tile, 'ADBE Tile-0005', 300);
+            UK.set(r.tile, 'ADBE Tile-0006', 1);
+        }
+        r.tf = UK.addFx(adj, 'ADBE Geometry2', 'Transform');
+        UK.set(r.tf, 'ADBE Geometry2-0010', 0);
+        UK.set(r.tf, 'ADBE Geometry2-0011', 360);
+        UK.motionBlur(adj, c.comp);
+        return r;
+    }
+    function uniScale(tf) { UK.set(tf, 'ADBE Geometry2-0003', 1); return UK.p(tf, 'ADBE Geometry2-0004'); }
+    function radialZoom(c, adj, peak) {
+        var rb = UK.addFx(adj, 'CC Radial Fast Blur', 'Radial Blur');
+        UK.set(rb, 'CC Radial Fast Blur-0001', center(c));
+        UK.set(rb, 'CC Radial Fast Blur-0003', 2);
+        sym(c, UK.p(rb, 'CC Radial Fast Blur-0002'), 0, UK.clamp(peak, 0, 95), 'Radial Blur', 'smooth');
+        return rb;
+    }
+    function dirBlur(c, adj, peak, dirDeg) {
+        var mb = UK.addFx(adj, 'ADBE Motion Blur', 'Directional Blur');
+        UK.set(mb, 'ADBE Motion Blur-0001', dirDeg == null ? (horiz(c) ? 90 : 0) : dirDeg);
+        sym(c, UK.p(mb, 'ADBE Motion Blur-0002'), 0, peak, 'Blur', 'smooth');
+        return mb;
+    }
+    /** пара wipe-эффектов: B 100→0, A 0→100 */
+    function wipePair(c, match, nick, compProp, setup) {
+        need(c);
+        var s, fx, p;
+        if (c.B) {
+            fx = UK.addFx(c.B, match, nick);
+            if (setup) setup(fx, c.B, false);
+            p = UK.p(fx, compProp); s = tB(c);
+            UK.key2(p, s[0], 100, s[1], 0, c.ease);
+        }
+        if (c.A) {
+            fx = UK.addFx(c.A, match, nick);
+            if (setup) setup(fx, c.A, true);
+            p = UK.p(fx, compProp); s = tA(c);
+            UK.key2(p, s[0], 0, s[1], 100, c.ease, true);
+        }
+    }
+    function fadeOutA(c, from) {
+        if (!c.A) return;
+        var s = tA(c), op = c.A.transform.opacity;
+        UK.key2(op, from == null ? s[0] : from, op.valueAtTime(s[0], false), s[1], 0, 'expoIn');
+    }
+    function fadeInB(c, to) {
+        if (!c.B) return;
+        var s = tB(c), op = c.B.transform.opacity;
+        UK.key2(op, s[0], 0, to == null ? s[1] : to, op.valueAtTime(s[1], false), 'expoOut');
+    }
+    function dipSolid(c, color, name, peakOp, ease) {
+        var sol = UK.solid(c.comp, color, name, c.t0, c.t1);
+        sym(c, sol.transform.opacity, 0, UK.clamp(peakOp, 0, 100), 'Opacity', ease || 'expoInOut');
+        return sol;
+    }
+    /** Скрытый солид с Fractal Noise (карта для displacement/gradient wipe) */
+    function noiseSolid(c, name, scale, contrast) {
+        var sol = UK.solid(c.comp, [0.5, 0.5, 0.5], name, c.t0, c.t1);
+        var fn = UK.addFx(sol, 'ADBE Fractal Noise', 'Noise');
+        UK.set(fn, ['ADBE Fractal Noise-0004', 'Contrast'], contrast || 120);
+        UK.set(fn, ['ADBE Fractal Noise-0009', 'Uniform Scaling'], 1);
+        UK.set(fn, ['ADBE Fractal Noise-0010', 'Scale'], scale || 250);
+        UK.set(fn, ['ADBE Fractal Noise-0015', 'Complexity'], 3);
+        UK.expr(fn, ['ADBE Fractal Noise-0022', 'Evolution'], 'time * 120');
+        sol.enabled = false;
+        return sol;
+    }
+    /** Маска-полоса в координатах композиции на слое */
+    function stripMask(L, c, i, n, horizStrips, name) {
+        var W = c.comp.width, H = c.comp.height, pad = 2, sh;
+        if (horizStrips) sh = A.rectShape(-pad, H * i / n - pad, W + pad, H * (i + 1) / n + pad);
+        else sh = A.rectShape(W * i / n - pad, -pad, W * (i + 1) / n + pad, H + pad);
+        var m = A.addMask(L, name || ('Strip ' + (i + 1)));
+        m.property('ADBE Mask Shape').setValue(sh);
+        return m;
+    }
+    function T(d) { d.cat = 'trans'; d.needs = 'trans'; d.desc = d.desc + ' [PRO]'; d.tags = d.tags + ' pro premium переход'; UK.add(d); }
+
+    // ============================================================ переходы
+
+    T({
+        id: 'trans.proSlice', name: 'Slice Transition · Полосы-слайсы', preview: 'push',
+        desc: '5 корректирующих полос над склейкой: каждая полоса сдвигает изображение по направлению с каскадной задержкой и направленным размытием (Motion Tile закрывает края).',
+        tags: 'slice strips полосы слайс',
+        apply: function (c) {
+            var n = 5, i, W = c.comp.width, H = c.comp.height;
+            var dist = (horiz(c) ? W : H) * UK.clamp(c.strength, 0.3, 1.5);
+            for (i = 0; i < n; i++) {
+                var delay = (i / n) * c.dur * 0.35;
+                var adj = UK.adjLayer(c.comp, c.t0 + delay * 0.5, c.t1, 'Slice ' + (i + 1));
+                stripMask(adj, c, i, n, horiz(c));
+                var r = adjTT(c, null, true, adj);
+                var pos = UK.p(r.tf, 'ADBE Geometry2-0002'), base = pos.valueAtTime(c.cut, false);
+                var cc = { comp: c.comp, fd: c.fd, cut: c.cut + delay * 0.5, t0: c.t0 + delay * 0.5, t1: c.t1 - (c.dur * 0.35 - delay) * 0.5, opts: c.opts, layer: adj };
+                jump(cc, pos, base, UK.vecMul(c.dirV, -dist), UK.vecMul(c.dirV, dist), 'Slice Shift');
+                var mb = UK.addFx(adj, 'ADBE Motion Blur', 'Slice Blur');
+                UK.set(mb, 'ADBE Motion Blur-0001', horiz(c) ? 90 : 0);
+                sym(cc, UK.p(mb, 'ADBE Motion Blur-0002'), 0, 120 * c.strength, 'Slice Blur', 'smooth');
+            }
+            c.layer = c.B || c.A;
+        }
+    });
+
+    T({
+        id: 'trans.proSplitSlide', name: 'Split Slide · Разъезд половин', preview: 'push',
+        desc: 'Исходящий кадр делится на две половины (дубль + маски), половины разъезжаются в стороны, открывая входящий. Без A — половины входящего съезжаются.',
+        tags: 'split halves slide половины разъезд',
+        apply: function (c) {
+            need(c);
+            var L = c.A || c.B, isA = !!c.A, s = isA ? tA(c) : tB(c), i;
+            var r = lrect(L, c), pad = 6;
+            var d = L.duplicate(); d.name = UK.PREFIX + L.name + ' half';
+            var halves = [L, d];
+            for (i = 0; i < 2; i++) {
+                var m = A.addMask(halves[i], 'Half ' + (i + 1)), sh;
+                if (horiz(c)) sh = A.rectShape(r.l - pad, r.t + r.h * i / 2 - (i === 0 ? pad : 0), r.l + r.w + pad, r.t + r.h * (i + 1) / 2 + (i === 1 ? pad : 0));
+                else sh = A.rectShape(r.l + r.w * i / 2 - (i === 0 ? pad : 0), r.t - pad, r.l + r.w * (i + 1) / 2 + (i === 1 ? pad : 0), r.t + r.h + pad);
+                m.property('ADBE Mask Shape').setValue(sh);
+                var pos = halves[i].transform.position, base = pos.valueAtTime(c.cut, false);
+                var dv = UK.vecMul(c.dirV, i === 0 ? 1 : -1);
+                var far = UK.vecAdd(base, UK.vecMul(dv, UK.exitDistance(halves[i], c.comp, dv, c.cut) * UK.clamp(c.strength, 0.5, 1.5)));
+                if (isA) UK.key2(pos, s[0], base, s[1], far, c.ease, true);
+                else { UK.key2(pos, s[0], far, s[1], base, c.ease); UK.applyEaseExpr(pos, c.ease, sub(c, halves[i])); }
+                UK.motionBlur(halves[i], c.comp);
+            }
+            if (isA && c.B) fadeInB(c, c.cut + c.fd * 2);
+        }
+    });
+
+    T({
+        id: 'trans.proInk', name: 'Ink Transition · Чернильный переход', preview: 'wipe',
+        desc: 'Входящий кадр проявляется Linear Wipe с рваным краем (Roughen Edges) и турбулентностью; исходящий — зеркально.',
+        tags: 'ink brush paint roughen чернила кисть',
+        apply: function (c) {
+            wipePair(c, 'ADBE Linear Wipe', 'Ink Wipe', 'ADBE Linear Wipe-0001', function (fx, L, isA) {
+                UK.set(fx, 'ADBE Linear Wipe-0002', A.wipeAngle(c) + (isA ? 180 : 0));
+                UK.set(fx, 'ADBE Linear Wipe-0003', 30);
+                var re = UK.addFx(L, 'ADBE Roughen Edges', 'Ink Edges');
+                UK.set(re, 'ADBE Roughen Edges-0001', 1);
+                UK.set(re, 'ADBE Roughen Edges-0003', 90 * c.strength);
+                UK.set(re, 'ADBE Roughen Edges-0004', 0.4);
+                UK.set(re, 'ADBE Roughen Edges-0006', 200);
+                UK.set(re, 'ADBE Roughen Edges-0009', 4);
+                UK.expr(re, ['ADBE Roughen Edges-0010', 'Evolution'], 'time * 70');
+                var s = isA ? tA(c) : tB(c);
+                var b = UK.p(re, 'ADBE Roughen Edges-0003');
+                if (isA) UK.key2(b, s[0], 0, s[0] + c.fd * 3, 90 * c.strength, 'linear');
+                else UK.key2(b, s[1] - c.fd * 3, 90 * c.strength, s[1], 0, 'linear');
+            });
+        }
+    });
+
+    T({
+        id: 'trans.proLiquid', name: 'Liquid Transition · Жидкий переход', preview: 'liquid',
+        desc: 'Wipe-шторка с мягким краем + Wave Warp + Turbulent Displace на входящем (и исходящем) кадре — край «течёт».',
+        tags: 'liquid wave fluid жидкость',
+        apply: function (c) {
+            wipePair(c, 'ADBE Linear Wipe', 'Liquid Wipe', 'ADBE Linear Wipe-0001', function (fx, L, isA) {
+                UK.set(fx, 'ADBE Linear Wipe-0002', A.wipeAngle(c) + (isA ? 180 : 0));
+                UK.set(fx, 'ADBE Linear Wipe-0003', 70);
+                var s = isA ? tA(c) : tB(c);
+                var ww = UK.addFx(L, 'ADBE Wave Warp', 'Liquid Wave');
+                UK.set(ww, 'ADBE Wave Warp-0003', 180);
+                UK.set(ww, 'ADBE Wave Warp-0004', horiz(c) ? 90 : 0);
+                UK.set(ww, 'ADBE Wave Warp-0005', 1.3);
+                UK.set(ww, 'ADBE Wave Warp-0006', 1);
+                var h = UK.p(ww, 'ADBE Wave Warp-0002');
+                if (isA) UK.key2(h, s[0], 0, s[1], 45 * c.strength, 'expoIn'); else UK.key2(h, s[0], 45 * c.strength, s[1], 0, 'expoOut');
+                var td = UK.addFx(L, 'ADBE Turbulent Displace', 'Liquid Turb');
+                UK.set(td, 'ADBE Turbulent Displace-0003', 100);
+                UK.expr(td, ['ADBE Turbulent Displace-0006', 'Evolution'], 'time * 100');
+                var a = UK.p(td, 'ADBE Turbulent Displace-0002');
+                if (isA) UK.key2(a, s[0], 0, s[1], 60 * c.strength, 'expoIn'); else UK.key2(a, s[0], 60 * c.strength, s[1], 0, 'expoOut');
+            });
+        }
+    });
+
+    T({
+        id: 'trans.proLightFlash', name: 'Light Flash Zoom · Световой зум', preview: 'flash',
+        desc: 'Корр. слой: зум + пик экспозиции и свечения на склейке — кадр «выгорает» в свет и возвращается.',
+        tags: 'light flash exposure glow zoom свет вспышка',
+        apply: function (c) {
+            var r = adjTT(c, 'Light Flash', true), sc = uniScale(r.tf);
+            sym(c, sc, 100, 25 * c.strength, 'Zoom');
+            var ex = UK.addFx(r.adj, 'ADBE Exposure2', 'Exposure');
+            sym(c, UK.p(ex, ['ADBE Exposure2-0003', 'Exposure']), 0, 3.5 * c.strength, 'Exposure', 'expoInOut');
+            var g = UK.addFx(r.adj, 'ADBE Glo2', 'Glow');
+            UK.set(g, 'ADBE Glo2-0002', 40); UK.set(g, 'ADBE Glo2-0003', 150);
+            sym(c, UK.p(g, 'ADBE Glo2-0004'), 0, 2.5 * c.strength, 'Glow', 'expoInOut');
+            radialZoom(c, r.adj, 30 * c.strength);
+        }
+    });
+
+    T({
+        id: 'trans.proFlare', name: 'Lens Flare Pass · Пролёт блика', preview: 'sweep',
+        desc: 'Корр. слой: Lens Flare пролетает через кадр по направлению, яркость пикует на склейке; лёгкий зум и пересвет.',
+        tags: 'lens flare light pass блик пролёт',
+        apply: function (c) {
+            var r = adjTT(c, 'Flare', true), sc = uniScale(r.tf);
+            sym(c, sc, 100, 10 * c.strength, 'Zoom');
+            var lf = UK.addFx(r.adj, 'ADBE Lens Flare', 'Flare');
+            UK.set(lf, 'ADBE Lens Flare-0003', 1);
+            var W = c.comp.width, H = c.comp.height, cen = center(c);
+            var from = horiz(c) ? [c.dirV[0] < 0 ? W * 1.2 : -W * 0.2, H * 0.4] : [W * 0.6, c.dirV[1] < 0 ? H * 1.2 : -H * 0.2];
+            var to = horiz(c) ? [c.dirV[0] < 0 ? -W * 0.2 : W * 1.2, H * 0.6] : [W * 0.4, c.dirV[1] < 0 ? -H * 0.2 : H * 1.2];
+            UK.key2(UK.p(lf, 'ADBE Lens Flare-0001'), c.t0, from, c.t1, to, 'smooth');
+            sym(c, UK.p(lf, 'ADBE Lens Flare-0002'), 0, 160 * UK.clamp(c.strength, 0.2, 1.5), 'Flare Brightness', 'smooth');
+            var ex = UK.addFx(r.adj, 'ADBE Exposure2', 'Exposure');
+            sym(c, UK.p(ex, ['ADBE Exposure2-0003', 'Exposure']), 0, 1.2 * c.strength, 'Exposure', 'smooth');
+        }
+    });
+
+    T({
+        id: 'trans.proGlass', name: 'Glass Refraction · Преломление', preview: 'liquid',
+        desc: 'Скрытый солид с Fractal Noise служит картой Displacement Map на корр. слое: кадр «преломляется» через стекло на склейке.',
+        tags: 'glass refraction displacement стекло преломление',
+        apply: function (c) {
+            var adj = c.adj('Glass');
+            var map = noiseSolid(c, 'Glass Map', 300, 150);
+            var dm = UK.addFx(adj, 'ADBE Displacement Map', 'Refract');
+            UK.set(dm, 'ADBE Displacement Map-0001', map.index);
+            UK.set(dm, 'ADBE Displacement Map-0002', 1); UK.set(dm, 'ADBE Displacement Map-0004', 2);
+            UK.set(dm, 'ADBE Displacement Map-0007', 2);
+            sym(c, UK.p(dm, 'ADBE Displacement Map-0003'), 0, 150 * c.strength, 'Refraction', 'expoInOut');
+            sym(c, UK.p(dm, 'ADBE Displacement Map-0005'), 0, 150 * c.strength, 'Refraction Y', 'expoInOut');
+            var b = UK.addFx(adj, 'ADBE Gaussian Blur 2', 'Glass Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            sym(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 0, 12 * c.strength, 'Glass Blur', 'smooth');
+            c.layer = adj;
+        }
+    });
+
+    T({
+        id: 'trans.proSmear', name: 'Smear Stretch · Смаз-растяжение', preview: 'stretch',
+        desc: 'Корр. слой: масштаб по оси направления 100 → 400 → 100 % с Motion Tile и направленным размытием — кадр «размазывается» через склейку.',
+        tags: 'smear stretch scale смаз растяжение',
+        apply: function (c) {
+            var r = adjTT(c, 'Smear', true);
+            UK.set(r.tf, 'ADBE Geometry2-0003', 0);
+            var p = UK.p(r.tf, horiz(c) ? 'ADBE Geometry2-0005' : 'ADBE Geometry2-0004');
+            sym(c, p, 100, 300 * UK.clamp(c.strength, 0.3, 1.5), 'Stretch');
+            dirBlur(c, r.adj, 200 * c.strength);
+        }
+    });
+
+    T({
+        id: 'trans.proSpinBlur', name: 'Spin Blur 3D · Вращение с размытием', preview: 'spin',
+        desc: 'Корр. слой: поворот ±90° прыжком на склейке + Radial Blur (spin) + зум — вращательный переход.',
+        tags: 'spin rotate radial blur вращение',
+        apply: function (c) {
+            var r = adjTT(c, 'Spin Blur', true), sg = sgn(c);
+            jump(c, UK.p(r.tf, 'ADBE Geometry2-0008'), 0, -90 * sg * UK.clamp(c.strength, 0.3, 2), 90 * sg * UK.clamp(c.strength, 0.3, 2), 'Spin');
+            sym(c, uniScale(r.tf), 100, 40 * c.strength, 'Zoom');
+            var rb = UK.addFx(r.adj, 'ADBE Radial Blur', 'Spin Radial');
+            UK.set(rb, 'ADBE Radial Blur-0003', 1);
+            UK.set(rb, 'ADBE Radial Blur-0002', center(c));
+            sym(c, UK.p(rb, 'ADBE Radial Blur-0001'), 0, 60 * c.strength, 'Spin Blur', 'smooth');
+        }
+    });
+
+    T({
+        id: 'trans.proCube', name: 'Cube Rotate · Куб', preview: 'orbit',
+        desc: 'Кадры — грани куба (3D): исходящий поворачивается на 90° и уезжает, входящий приезжает с противоположной грани.',
+        tags: 'cube 3d rotate куб',
+        apply: function (c) {
+            need(c);
+            var sg = sgn(c), s, rp, pos, base, W = c.comp.width, H = c.comp.height;
+            var shift = horiz(c) ? [W * 0.5 * c.dirV[0], 0] : [0, H * 0.5 * c.dirV[1]];
+            if (c.A) {
+                UK.to3D(c.A); s = tA(c);
+                rp = horiz(c) ? c.A.transform.yRotation : c.A.transform.xRotation;
+                var rv = rp.valueAtTime(s[0], false);
+                UK.key2(rp, s[0], rv, s[1], rv + 90 * sg * (horiz(c) ? -1 : 1), c.ease, true);
+                pos = c.A.transform.position; base = pos.valueAtTime(s[0], false);
+                UK.key2(pos, s[0], base, s[1], UK.vecAdd(base, shift), c.ease, true);
+                UK.motionBlur(c.A, c.comp);
+            }
+            if (c.B) {
+                UK.to3D(c.B); s = tB(c);
+                rp = horiz(c) ? c.B.transform.yRotation : c.B.transform.xRotation;
+                var ev = rp.valueAtTime(s[1], false);
+                UK.key2(rp, s[0], ev - 90 * sg * (horiz(c) ? -1 : 1), s[1], ev, c.ease);
+                pos = c.B.transform.position; base = pos.valueAtTime(s[1], false);
+                UK.key2(pos, s[0], UK.vecAdd(base, UK.vecMul(shift, -1)), s[1], base, c.ease);
+                UK.applyEaseExpr(pos, c.ease, sub(c, c.B));
+                UK.motionBlur(c.B, c.comp);
+            }
+        }
+    });
+
+    T({
+        id: 'trans.proPageTurn', name: 'Page Turn · Перелистывание', preview: 'flip',
+        desc: 'CC Page Turn на исходящем кадре: страница заворачивается по направлению, открывая входящий. Без A — входящий «разворачивается».',
+        tags: 'page turn paper перелистывание страница',
+        apply: function (c) {
+            need(c);
+            var L = c.A || c.B, isA = !!c.A, s = isA ? tA(c) : tB(c);
+            var pt = UK.addFx(L, 'CC Page Turn', 'Page Turn');
+            var W = L.width || c.comp.width, H = L.height || c.comp.height;
+            var start = horiz(c) ? [c.dirV[0] < 0 ? W * 1.1 : -W * 0.1, H / 2] : [W / 2, c.dirV[1] < 0 ? H * 1.1 : -H * 0.1];
+            var end = horiz(c) ? [c.dirV[0] < 0 ? -W * 0.6 : W * 1.6, H / 2] : [W / 2, c.dirV[1] < 0 ? -H * 0.6 : H * 1.6];
+            var fp = UK.p(pt, ['Fold Position', 'CC Page Turn-0001']);
+            if (isA) UK.key2(fp, s[0], start, s[1], end, c.ease); else UK.key2(fp, s[0], end, s[1], start, c.ease);
+            UK.set(pt, ['Fold Direction', 'CC Page Turn-0002'], horiz(c) ? (c.dirV[0] < 0 ? 0 : 180) : (c.dirV[1] < 0 ? 90 : 270));
+            UK.set(pt, ['Fold Radius', 'CC Page Turn-0003'], 120 * UK.clamp(c.strength, 0.3, 2));
+            UK.set(pt, ['Back Opacity', 'CC Page Turn-0007'], 80);
+            if (isA && c.B) fadeInB(c, c.cut + c.fd);
+        }
+    });
+
+    T({
+        id: 'trans.proPixelBlock', name: 'Pixel Block · Пиксельный распад', preview: 'pixel',
+        desc: 'Корр. слой: Mosaic прыжком (мелко → крупно → мелко) + Posterize Time 8 fps — цифровой «распад» кадра на склейке.',
+        tags: 'pixel mosaic block posterize пиксели',
+        apply: function (c) {
+            var adj = c.adj('Pixel Block');
+            var mos = UK.addFx(adj, 'ADBE Mosaic', 'Blocks');
+            UK.set(mos, 'ADBE Mosaic-0003', 1);
+            var maxB = Math.round(c.comp.width / 2), minB = Math.max(4, Math.round(12 / UK.clamp(c.strength, 0.2, 3)));
+            var hb = UK.p(mos, 'ADBE Mosaic-0001'), vb = UK.p(mos, 'ADBE Mosaic-0002');
+            var ratio = c.comp.height / c.comp.width;
+            UK.keys(hb, [[c.t0, maxB], [c.cut, minB], [c.t1, maxB]], 'expoInOut');
+            UK.keys(vb, [[c.t0, Math.round(maxB * ratio)], [c.cut, Math.max(2, Math.round(minB * ratio))], [c.t1, Math.round(maxB * ratio)]], 'expoInOut');
+            var pt = UK.addFx(adj, 'ADBE Posterize Time', 'Stutter');
+            UK.set(pt, 'ADBE Posterize Time-0001', 8);
+            c.layer = adj;
+        }
+    });
+
+    T({
+        id: 'trans.proFreezeHit', name: 'Freeze Hit · Стоп-кадр с ударом', preview: 'shake',
+        desc: 'Корр. слой: Posterize Time 4 fps (рваное движение) + удар масштаба + белая вспышка + дрожание камеры с огибающей.',
+        tags: 'freeze hit punch flash shake стоп-кадр удар',
+        apply: function (c) {
+            var r = adjTT(c, 'Freeze Hit', true), sc = uniScale(r.tf);
+            sym(c, sc, 100, 18 * c.strength, 'Punch', 'expoInOut');
+            var pt = UK.addFx(r.adj, 'ADBE Posterize Time', 'Stutter');
+            UK.set(pt, 'ADBE Posterize Time-0001', 4);
+            var pos = UK.p(r.tf, 'ADBE Geometry2-0002'), base = pos.valueAtTime(c.cut, false);
+            var amp = UK.cv(c, 'Shake', 40 * c.strength);
+            pos.expression =
+                'var e = (time < ' + F(c.cut) + ') ? ease(time, ' + F(c.t0) + ', ' + F(c.cut) + ', 0, 1) : ease(time, ' + F(c.cut) + ', ' + F(c.t1) + ', 1, 0);\n' +
+                V(base) + ' + wiggle(14, ' + amp + ') * e - value * e';
+            dipSolid(c, [1, 1, 1], 'Flash', 90 * UK.clamp(c.strength, 0, 1.1), 'expoInOut');
+            c.layer = r.adj;
+        }
+    });
+
+    T({
+        id: 'trans.proSlideStack', name: 'Slide Stack · Наезд с тенью', preview: 'push',
+        desc: 'Входящий кадр въезжает поверх с перелётом и падающей тенью (Drop Shadow); исходящий медленно уезжает и затемняется.',
+        tags: 'slide stack shadow overlap наезд тень',
+        apply: function (c) {
+            need(c);
+            var s, pos, base;
+            if (c.A) {
+                s = tA(c); pos = c.A.transform.position; base = pos.valueAtTime(s[0], false);
+                UK.key2(pos, s[0], base, s[1], UK.vecAdd(base, UK.vecMul(c.dirV, UK.exitDistance(c.A, c.comp, c.dirV, c.cut) * 0.3)), 'smooth');
+                var bc = UK.addFx(c.A, 'ADBE Brightness & Contrast 2', 'Darken');
+                UK.key2(UK.p(bc, 'ADBE Brightness & Contrast 2-0001'), s[0], 0, s[1], -50 * c.strength, 'smooth');
+            }
+            if (c.B) {
+                s = tB(c); pos = c.B.transform.position; base = pos.valueAtTime(s[1], false);
+                var back = UK.vecMul(c.dirV, -1);
+                UK.key2(pos, s[0], UK.vecAdd(base, UK.vecMul(back, UK.exitDistance(c.B, c.comp, back, c.cut))), s[1], base, 'expoOut');
+                UK.applyEaseExpr(pos, UK.easeById('back'), sub(c, c.B));
+                var ds = UK.addFx(c.B, 'ADBE Drop Shadow', 'Stack Shadow');
+                UK.set(ds, 'ADBE Drop Shadow-0001', [0, 0, 0, 1]);
+                UK.set(ds, 'ADBE Drop Shadow-0002', 180);
+                UK.set(ds, 'ADBE Drop Shadow-0003', horiz(c) ? (c.dirV[0] < 0 ? 90 : 270) : (c.dirV[1] < 0 ? 180 : 0));
+                UK.set(ds, 'ADBE Drop Shadow-0004', 30 * c.strength);
+                UK.set(ds, 'ADBE Drop Shadow-0005', 80);
+                UK.motionBlur(c.B, c.comp);
+            }
+        }
+    });
+
+    T({
+        id: 'trans.proParallaxPush', name: 'Parallax Push · Параллакс-сдвиг', preview: 'push',
+        desc: 'Исходящий уезжает на 40 % расстояния с затуханием, входящий проходит полный путь поверх — ощущение глубины.',
+        tags: 'parallax push depth параллакс',
+        apply: function (c) {
+            need(c);
+            var s, pos, base;
+            if (c.A) {
+                s = tA(c); pos = c.A.transform.position; base = pos.valueAtTime(s[0], false);
+                UK.key2(pos, s[0], base, s[1], UK.vecAdd(base, UK.vecMul(c.dirV, UK.exitDistance(c.A, c.comp, c.dirV, c.cut) * 0.4 * c.strength)), c.ease, true);
+                fadeOutA(c, s[0] + (s[1] - s[0]) * 0.4);
+                UK.motionBlur(c.A, c.comp);
+            }
+            if (c.B) {
+                s = tB(c); pos = c.B.transform.position; base = pos.valueAtTime(s[1], false);
+                var back = UK.vecMul(c.dirV, -1);
+                UK.key2(pos, s[0], UK.vecAdd(base, UK.vecMul(back, UK.exitDistance(c.B, c.comp, back, c.cut))), s[1], base, c.ease);
+                UK.applyEaseExpr(pos, c.ease, sub(c, c.B));
+                UK.motionBlur(c.B, c.comp);
+            }
+        }
+    });
+
+    T({
+        id: 'trans.proLuma', name: 'Luma Dissolve · Градиентный диссолв', preview: 'dissolve',
+        desc: 'Скрытый солид с Gradient Ramp (по направлению) служит картой для Gradient Wipe: кадры сменяются мягкой световой волной.',
+        tags: 'luma gradient wipe dissolve диссолв градиент',
+        apply: function (c) {
+            need(c);
+            var sol = UK.solid(c.comp, [0.5, 0.5, 0.5], 'Luma Map', c.t0, c.t1);
+            var ramp = UK.addFx(sol, 'ADBE Ramp', 'Ramp');
+            var W = c.comp.width, H = c.comp.height;
+            var st = horiz(c) ? [c.dirV[0] < 0 ? W : 0, H / 2] : [W / 2, c.dirV[1] < 0 ? H : 0];
+            var en = horiz(c) ? [c.dirV[0] < 0 ? 0 : W, H / 2] : [W / 2, c.dirV[1] < 0 ? 0 : H];
+            UK.set(ramp, 'ADBE Ramp-0001', st); UK.set(ramp, 'ADBE Ramp-0003', en);
+            UK.set(ramp, 'ADBE Ramp-0002', [0, 0, 0, 1]); UK.set(ramp, 'ADBE Ramp-0004', [1, 1, 1, 1]);
+            sol.enabled = false;
+            var soft = 40 * UK.clamp(c.strength, 0.2, 2.4);
+            wipePair(c, 'ADBE Gradient Wipe', 'Luma Wipe', 'ADBE Gradient Wipe-0001', function (fx, L, isA) {
+                UK.set(fx, 'ADBE Gradient Wipe-0002', soft);
+                UK.set(fx, 'ADBE Gradient Wipe-0003', sol.index);
+                UK.set(fx, 'ADBE Gradient Wipe-0004', 2);
+                UK.set(fx, 'ADBE Gradient Wipe-0005', isA ? 1 : 0);
+            });
+        }
+    });
+
+    T({
+        id: 'trans.proMorphBlur', name: 'Morph Blur · Морф-размытие', preview: 'bulge',
+        desc: 'Корр. слой: Gaussian Blur + CC Lens (сходимость) пикуют на склейке — кадр «сплющивается» в линзу и выходит из неё.',
+        tags: 'morph lens blur морф линза',
+        apply: function (c) {
+            var adj = c.adj('Morph');
+            var b = UK.addFx(adj, 'ADBE Gaussian Blur 2', 'Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            sym(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 0, 60 * c.strength, 'Blur', 'smooth');
+            var ln = UK.addFx(adj, 'CC Lens', 'Lens');
+            UK.set(ln, 'CC Lens-0001', center(c));
+            UK.set(ln, 'CC Lens-0002', 500);
+            sym(c, UK.p(ln, 'CC Lens-0003'), 0, 60 * UK.clamp(c.strength, 0.2, 1.6), 'Convergence', 'expoInOut');
+            c.layer = adj;
+        }
+    });
+
+    T({
+        id: 'trans.proVortex', name: 'Twirl Vortex · Воронка', preview: 'twist',
+        desc: 'Корр. слой: Twirl 0 → ±360° прыжком через склейку + зум с радиальным размытием — кадр закручивается в воронку.',
+        tags: 'twirl vortex spin воронка закручивание',
+        apply: function (c) {
+            var r = adjTT(c, 'Vortex', true), sg = sgn(c);
+            var tw = UK.addFx(r.adj, 'ADBE Twirl', 'Twirl');
+            UK.set(tw, 'ADBE Twirl-0002', 70);
+            UK.set(tw, 'ADBE Twirl-0003', center(c));
+            jump(c, UK.p(tw, 'ADBE Twirl-0001'), 0, -360 * sg * UK.clamp(c.strength, 0.25, 2), 360 * sg * UK.clamp(c.strength, 0.25, 2), 'Twirl');
+            sym(c, uniScale(r.tf), 100, 30 * c.strength, 'Zoom');
+            radialZoom(c, r.adj, 25 * c.strength);
+        }
+    });
+
+    T({
+        id: 'trans.proKaleido', name: 'Kaleido Spin · Калейдоскоп', preview: 'kaleido',
+        desc: 'Корр. слой с CC Kaleida проявляется к склейке и гаснет после, сегменты вращаются; плюс лёгкий зум.',
+        tags: 'kaleidoscope mirror spin калейдоскоп',
+        apply: function (c) {
+            var r = adjTT(c, 'Kaleido', false);
+            var k = UK.addFx(r.adj, 'CC Kaleida', 'Kaleida');
+            UK.set(k, 'CC Kaleida-0001', center(c));
+            UK.set(k, 'CC Kaleida-0002', 160);
+            UK.set(k, 'CC Kaleida-0003', 7);
+            UK.expr(k, 'CC Kaleida-0004', 'time * ' + F(90 * c.strength));
+            sym(c, r.adj.transform.opacity, 0, 100, 'Kaleido Opacity', 'expoInOut');
+            sym(c, uniScale(r.tf), 100, 15 * c.strength, 'Zoom');
+        }
+    });
+
+    T({
+        id: 'trans.proChromaWhip', name: 'Chromatic Whip · Хроматический вип', preview: 'rgb',
+        desc: 'Корр. слой: whip-сдвиг по направлению (Motion Tile) + направленное размытие + Channel Blur красного и синего каналов — RGB-расслоение на пике.',
+        tags: 'whip chromatic rgb pan вип хроматика',
+        apply: function (c) {
+            var r = adjTT(c, 'Chroma Whip', true);
+            var dist = (horiz(c) ? c.comp.width : c.comp.height) * UK.clamp(c.strength, 0.3, 1.5);
+            var pos = UK.p(r.tf, 'ADBE Geometry2-0002'), base = pos.valueAtTime(c.cut, false);
+            jump(c, pos, base, UK.vecMul(c.dirV, -dist), UK.vecMul(c.dirV, dist), 'Whip');
+            dirBlur(c, r.adj, 180 * c.strength);
+            var cb = UK.addFx(r.adj, 'ADBE Channel Blur', 'Chroma');
+            UK.set(cb, 'ADBE Channel Blur-0005', 1);
+            UK.set(cb, 'ADBE Channel Blur-0006', horiz(c) ? 2 : 3);
+            sym(c, UK.p(cb, 'ADBE Channel Blur-0001'), 0, 120 * c.strength, 'Chroma Red', 'smooth');
+            sym(c, UK.p(cb, 'ADBE Channel Blur-0003'), 0, 70 * c.strength, 'Chroma Blue', 'smooth');
+        }
+    });
+
+    T({
+        id: 'trans.proBlinds3D', name: 'Shutter Blinds 3D · 3D-жалюзи', preview: 'blinds',
+        desc: 'Venetian Blinds на входящем/исходящем кадре с наклоном (skew) через Transform — жалюзи «поворачиваются» при открытии.',
+        tags: 'blinds shutter skew 3d жалюзи',
+        apply: function (c) {
+            wipePair(c, 'ADBE Venetian Blinds', 'Blinds', 'ADBE Venetian Blinds-0001', function (fx, L, isA) {
+                UK.set(fx, 'ADBE Venetian Blinds-0002', horiz(c) ? 90 : 0);
+                UK.set(fx, 'ADBE Venetian Blinds-0003', Math.round(60 + 60 * c.strength));
+                UK.set(fx, 'ADBE Venetian Blinds-0004', 8);
+                var tf = UK.addFx(L, 'ADBE Geometry2', 'Blinds Skew');
+                UK.set(tf, 'ADBE Geometry2-0007', horiz(c) ? 0 : 90);
+                UK.set(tf, 'ADBE Geometry2-0010', 0); UK.set(tf, 'ADBE Geometry2-0011', 360);
+                var s = isA ? tA(c) : tB(c), sk = UK.p(tf, 'ADBE Geometry2-0006'), v = 20 * sgn(c) * c.strength;
+                if (isA) UK.key2(sk, s[0], 0, s[1], v, 'expoIn'); else UK.key2(sk, s[0], -v, s[1], 0, 'expoOut');
+                UK.motionBlur(L, c.comp);
+            });
+        }
+    });
+
+    T({
+        id: 'trans.proStrobe', name: 'Strobe Cut · Строб-склейка', preview: 'strobe',
+        desc: 'Белый солид с тремя hold-вспышками вокруг склейки + зум корр. слоя — клубный строб-переход.',
+        tags: 'strobe flash club строб вспышка',
+        apply: function (c) {
+            var r = adjTT(c, 'Strobe Zoom', true);
+            sym(c, uniScale(r.tf), 100, 20 * c.strength, 'Zoom');
+            var sol = UK.solid(c.comp, [1, 1, 1], 'Strobe', c.t0, c.t1);
+            var op = sol.transform.opacity, n = 3, i, peak = 100 * UK.clamp(c.strength, 0.3, 1);
+            var gap = Math.max(c.fd * 2, c.half / (n + 1));
+            UK.setHold(op, UK.key(op, c.t0, 0));
+            for (i = 0; i < n; i++) {
+                var t = c.cut - gap * (n - 1) / 2 + i * gap;
+                UK.setHold(op, UK.key(op, t, peak));
+                UK.setHold(op, UK.key(op, t + c.fd * (i === n - 1 ? 2 : 1), 0));
+            }
+            c.layer = r.adj;
+        }
+    });
+
+    T({
+        id: 'trans.proDipColor', name: 'Dip to Color Blur · Затемнение цветом', preview: 'dissolve',
+        desc: 'Солид выбранного цвета (контрол UK: Dip Color) проявляется к склейке; корр. слой размывает кадр на пике.',
+        tags: 'dip color fade blur затемнение цвет',
+        apply: function (c) {
+            var adj = c.adj('Dip Blur');
+            var b = UK.addFx(adj, 'ADBE Gaussian Blur 2', 'Blur');
+            UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+            sym(c, UK.p(b, 'ADBE Gaussian Blur 2-0001'), 0, 40 * c.strength, 'Blur', 'smooth');
+            var sol = UK.solid(c.comp, [0.05, 0.05, 0.08], 'Dip', c.t0, c.t1);
+            if (c.opts.controls) {
+                var ref = UK.cv({ opts: c.opts, layer: sol }, 'Dip Color', [0.05, 0.05, 0.08, 1], 'color');
+                var fill = UK.addFx(sol, 'ADBE Fill', 'Dip Fill');
+                UK.expr(fill, 'ADBE Fill-0003', ref);
+            }
+            var cc = { comp: c.comp, fd: c.fd, cut: c.cut, t0: c.t0, t1: c.t1, opts: c.opts, layer: sol };
+            sym(cc, sol.transform.opacity, 0, 100, 'Dip Opacity', 'expoInOut');
+            c.layer = adj;
+        }
+    });
+
+    T({
+        id: 'trans.proFilmRoll', name: 'Film Roll · Прокрутка плёнки', preview: 'roll',
+        desc: 'Корр. слой: Motion Tile (повтор кадров) + сдвиг на высоту кадра прыжком + вертикальный смаз — плёнка «проскакивает» в проекторе.',
+        tags: 'film roll projector frame плёнка прокрутка',
+        apply: function (c) {
+            var r = adjTT(c, 'Film Roll', true);
+            UK.set(r.tile, 'ADBE Tile-0006', 0);
+            var vertical = !horiz(c) || true; // плёнка всегда вертикальная, направление — знак
+            var sg = c.dirV[1] !== 0 ? c.dirV[1] : (c.dirV[0] || 1);
+            var H = c.comp.height * UK.clamp(c.strength, 0.5, 2);
+            var pos = UK.p(r.tf, 'ADBE Geometry2-0002'), base = pos.valueAtTime(c.cut, false);
+            jump(c, pos, base, [0, -H * sg], [0, H * sg], 'Roll');
+            dirBlur(c, r.adj, 150 * c.strength, 0);
+            var bc = UK.addFx(r.adj, 'ADBE Brightness & Contrast 2', 'Flicker');
+            sym(c, UK.p(bc, 'ADBE Brightness & Contrast 2-0001'), 0, -30 * c.strength, 'Darken', 'smooth');
+        }
+    });
+
+    T({
+        id: 'trans.proPunch', name: 'Punch Through · Пробой из центра', preview: 'zoom',
+        desc: 'Входящий кадр вырастает из центра поверх (0 → 100 % с перелётом); исходящий увеличивается до 130 % и размывается.',
+        tags: 'punch zoom center scale пробой',
+        apply: function (c) {
+            need(c);
+            var s, sc, sv;
+            if (c.A) {
+                s = tA(c); sc = c.A.transform.scale; sv = sc.valueAtTime(s[0], false);
+                UK.key2(sc, s[0], sv, s[1], A.scaleXY(sv, 1.3, 1.3), 'expoIn');
+                var b = UK.addFx(c.A, 'ADBE Gaussian Blur 2', 'Punch Blur');
+                UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+                UK.key2(UK.p(b, 'ADBE Gaussian Blur 2-0001'), s[0], 0, s[1], 40 * c.strength, 'expoIn');
+                UK.motionBlur(c.A, c.comp);
+            }
+            if (c.B) {
+                s = tB(c); sc = c.B.transform.scale; sv = sc.valueAtTime(s[1], false);
+                UK.key2(sc, s[0], UK.vecMul(sv, 0), s[1], sv, 'expoOut');
+                UK.applyEaseExpr(sc, UK.easeById('back'), sub(c, c.B));
+                UK.motionBlur(c.B, c.comp);
+            }
+        }
+    });
+})();
+
+
 // ---- src/presets/50_fx.jsx
 // =============================================================================
 //  Библиотека: Эффекты и луки (cat: 'fx')
@@ -4580,6 +5956,912 @@ UK.PREVIEW = UK.PREVIEW || {};
             var up = UK.vecMul(v, 1 + 0.18 * c.strength);
             UK.keys(sc, [[c.t0, v], [c.t0 + Math.max(c.fd, c.dur * 0.15), up], [c.t1, v]], 'expoOut');
             UK.motionBlur(c.layer, c.comp);
+        }
+    });
+
+})();
+
+
+// ---- src/presets/51_fx_pro.jsx
+// =============================================================================
+//  Библиотека PRO: дизайнерские луки и оверлеи (cat: 'fx' / 'light')
+//  Плёночные эмуляции, halation, анаморфные блики, боке, пыль, рамки, CRT/VHS pro,
+//  градиентные оверлеи, погодные и световые оверлеи. Все параметры — через UK.cv.
+// =============================================================================
+(function () {
+
+    // ---------------------------------------------------------------- хелперы
+    function isAV(l) { return l instanceof AVLayer; }
+    function col(r, g, b) { return [r, g, b, 1]; }
+    /** Контекст контролов на вспомогательном слое (слайдеры живут на нём же). */
+    function cs(c, layer) { return { opts: c.opts, layer: layer, strength: c.strength }; }
+    /** Солид-оверлей на время слоя, поверх него. */
+    function overlay(c, color, name) {
+        var s = UK.solid(c.comp, color, name, c.layer.inPoint, c.layer.outPoint);
+        s.moveBefore(c.layer);
+        s.label = 9; // зелёный — оверлеи
+        return s;
+    }
+    /** Значение + (опционально) слайдер, масштабирующий через выражение. */
+    function drive(c, fx, prop, name, value) {
+        UK.set(fx, prop, value);
+        if (c.opts.controls) UK.expr(fx, prop, UK.cv(c, name, value));
+    }
+    function driveColor(c, fx, prop, name, value) {
+        UK.set(fx, prop, value);
+        if (c.opts.controls) UK.expr(fx, prop, UK.cv(c, name, value, 'color'));
+    }
+    /** Общий слайдер Amount (0–100) для лука: look(fx, prop, v) даёт v * Amount/100. */
+    function amount(c, name) { return c.opts.controls ? UK.cv(c, name, 100) : null; }
+    function look(fx, prop, value, amt) {
+        UK.set(fx, prop, value);
+        if (amt) UK.expr(fx, prop, UK.fmt(value, 3) + ' * ' + amt + ' / 100');
+    }
+    /** Прозрачность слоя через контрол. */
+    function opacity(ctx, layer, name, value) {
+        var ref = UK.cv(ctx, name, value);
+        layer.transform.opacity.expression = 'Math.max(0, Math.min(100, ' + ref + '))';
+    }
+    /** Эллипс как Shape маски (bezier). */
+    function ellipseShape(cx, cy, rx, ry) {
+        var k = 0.5523, sh = new Shape();
+        sh.vertices = [[cx, cy - ry], [cx + rx, cy], [cx, cy + ry], [cx - rx, cy]];
+        sh.inTangents = [[-rx * k, 0], [0, -ry * k], [rx * k, 0], [0, ry * k]];
+        sh.outTangents = [[rx * k, 0], [0, ry * k], [-rx * k, 0], [0, -ry * k]];
+        sh.closed = true;
+        return sh;
+    }
+    /** Выражение createPath эллипса: cRef — строка-точка [x,y], rxRef/ryRef — строки. */
+    function ellipseExpr(cRef, rxRef, ryRef) {
+        return 'var c = ' + cRef + ', rx = ' + rxRef + ', ry = ' + ryRef + ', k = 0.5523;\n' +
+            'var v = [[c[0], c[1] - ry], [c[0] + rx, c[1]], [c[0], c[1] + ry], [c[0] - rx, c[1]]];\n' +
+            'var it = [[-rx * k, 0], [0, -ry * k], [rx * k, 0], [0, ry * k]];\n' +
+            'var ot = [[rx * k, 0], [0, ry * k], [-rx * k, 0], [0, -ry * k]];\n' +
+            'createPath(v, it, ot, true);';
+    }
+    function addMask(layer, shape, name) {
+        var m = layer.property('ADBE Mask Parade').addProperty('ADBE Mask Atom');
+        m.property('ADBE Mask Shape').setValue(shape);
+        m.name = UK.PREFIX + (name || 'Mask');
+        return m;
+    }
+    /** Fractal Noise с удобными параметрами. */
+    function fractal(layer, nick, o) {
+        var fn = UK.addFx(layer, 'ADBE Fractal Noise', nick);
+        if (o.type != null) UK.set(fn, ['ADBE Fractal Noise-0001', 'Fractal Type'], o.type);
+        if (o.noise != null) UK.set(fn, ['ADBE Fractal Noise-0002', 'Noise Type'], o.noise);
+        if (o.invert != null) UK.set(fn, ['ADBE Fractal Noise-0003', 'Invert'], o.invert);
+        if (o.contrast != null) UK.set(fn, ['ADBE Fractal Noise-0004', 'Contrast'], o.contrast);
+        if (o.brightness != null) UK.set(fn, ['ADBE Fractal Noise-0005', 'Brightness'], o.brightness);
+        if (o.overflow != null) UK.set(fn, ['ADBE Fractal Noise-0006', 'Overflow'], o.overflow);
+        if (o.sw != null || o.sh != null) {
+            UK.set(fn, ['ADBE Fractal Noise-0009', 'Uniform Scaling'], 0);
+            if (o.sw != null) UK.set(fn, ['ADBE Fractal Noise-0011', 'Scale Width'], o.sw);
+            if (o.sh != null) UK.set(fn, ['ADBE Fractal Noise-0012', 'Scale Height'], o.sh);
+        } else if (o.scale != null) UK.set(fn, ['ADBE Fractal Noise-0010', 'Scale'], o.scale);
+        if (o.complexity != null) UK.set(fn, ['ADBE Fractal Noise-0015', 'Complexity'], o.complexity);
+        if (o.evo) UK.expr(fn, ['ADBE Fractal Noise-0022', 'Evolution'], o.evo);
+        if (o.offset) UK.expr(fn, ['ADBE Fractal Noise-0013', 'Offset Turbulence'], o.offset);
+        if (o.opacity != null) UK.set(fn, ['ADBE Fractal Noise-0027', 'Opacity'], o.opacity);
+        return fn;
+    }
+    function glow(layer, nick, thr, rad, inten) {
+        var g = UK.addFx(layer, 'ADBE Glo2', nick);
+        UK.set(g, 'ADBE Glo2-0002', thr); UK.set(g, 'ADBE Glo2-0003', rad); UK.set(g, 'ADBE Glo2-0004', inten);
+        return g;
+    }
+    function gauss(layer, nick, v) {
+        var b = UK.addFx(layer, 'ADBE Gaussian Blur 2', nick);
+        UK.set(b, 'ADBE Gaussian Blur 2-0001', v); UK.set(b, 'ADBE Gaussian Blur 2-0003', 1);
+        return b;
+    }
+    function colorBalance(layer, nick, v) { // v = [sR,sG,sB, mR,mG,mB, hR,hG,hB]
+        var cb = UK.addFx(layer, 'ADBE Color Balance 2', nick);
+        for (var i = 0; i < 9; i++) UK.set(cb, 'ADBE Color Balance 2-000' + (i + 1), v[i]);
+        UK.set(cb, 'ADBE Color Balance 2-0010', 1);
+        return cb;
+    }
+    function cbLook(cb, v, amt) { for (var i = 0; i < 9; i++) look(cb, 'ADBE Color Balance 2-000' + (i + 1), v[i], amt); }
+    function tritone(layer, nick, hi, mid, sh, blend) {
+        var t = UK.addFx(layer, 'ADBE Tritone', nick);
+        UK.set(t, 'ADBE Tritone-0001', hi); UK.set(t, 'ADBE Tritone-0002', mid); UK.set(t, 'ADBE Tritone-0003', sh);
+        UK.set(t, 'ADBE Tritone-0004', blend);
+        return t;
+    }
+
+    // ================================================================ ПЛЁНОЧНЫЕ ЭМУЛЯЦИИ
+    UK.add({
+        id: 'fx.proKodak', cat: 'fx', name: 'Film Kodak-like · Тёплая плёнка', preview: 'grade',
+        desc: 'Тёплые кремовые света, глубокие чуть бирюзовые тени, сочность и мелкое зерно. Слайдер Amount.',
+        tags: 'film kodak portra emulation плёнка эмуляция тёплая cinematic pro',
+        apply: function (c) {
+            var amt = amount(c, 'Kodak Amount'), k = c.strength;
+            var cb = colorBalance(c.layer, 'Kodak Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [-10 * k, 2 * k, 14 * k, 6 * k, 2 * k, -4 * k, 16 * k, 8 * k, -14 * k], amt);
+            var tt = tritone(c.layer, 'Kodak Tone', col(1, 0.95, 0.86), col(0.55, 0.5, 0.46), col(0.08, 0.1, 0.13), 100);
+            UK.set(tt, 'ADBE Tritone-0004', 100 - 28 * k);
+            if (amt) UK.expr(tt, 'ADBE Tritone-0004', '100 - ' + UK.fmt(28 * k) + ' * ' + amt + ' / 100');
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'Kodak Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 18 * k, amt); look(vb, 'ADBE Vibrance-0002', 4 * k, amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Kodak Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', 10 * k, amt); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var nz = UK.addFx(c.layer, 'ADBE Noise2', 'Kodak Grain');
+            look(nz, 'ADBE Noise2-0001', 4 * k, amt); UK.set(nz, 'ADBE Noise2-0002', 0); UK.set(nz, 'ADBE Noise2-0003', 1);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proFuji', cat: 'fx', name: 'Film Fuji-like · Зелёная плёнка', preview: 'grade',
+        desc: 'Зеленоватые тени, cyan в светах, мягкий контраст — лук в духе Fuji. Слайдер Amount.',
+        tags: 'film fuji pro400h emulation плёнка зелёная cyan pro',
+        apply: function (c) {
+            var amt = amount(c, 'Fuji Amount'), k = c.strength;
+            var cb = colorBalance(c.layer, 'Fuji Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [-6 * k, 14 * k, 4 * k, -4 * k, 8 * k, 2 * k, -12 * k, 6 * k, 14 * k], amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Fuji Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0001', 4 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0002', -8 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'Fuji Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 12 * k, amt); look(vb, 'ADBE Vibrance-0002', -6 * k, amt);
+            var tt = tritone(c.layer, 'Fuji Tone', col(0.92, 0.98, 1), col(0.5, 0.54, 0.5), col(0.07, 0.11, 0.1), 100);
+            UK.set(tt, 'ADBE Tritone-0004', 100 - 22 * k);
+            if (amt) UK.expr(tt, 'ADBE Tritone-0004', '100 - ' + UK.fmt(22 * k) + ' * ' + amt + ' / 100');
+        }
+    });
+
+    UK.add({
+        id: 'fx.proBleach', cat: 'fx', name: 'Bleach Bypass Pro · Серебро', preview: 'grade',
+        desc: 'Сильно сниженная насыщенность, жёсткий контраст и лёгкое серебристое свечение светов.',
+        tags: 'bleach bypass silver retention контраст desaturate pro',
+        apply: function (c) {
+            var amt = amount(c, 'Bleach Amount'), k = c.strength;
+            var hs = UK.addFx(c.layer, 'ADBE HUE SATURATION', 'Bleach Desat');
+            look(hs, 'ADBE HUE SATURATION-0004', -50 * k, amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Bleach Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', 38 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0001', -4 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var g = glow(c.layer, 'Bleach Silver', 78, 60, 0.35 * k);
+            if (amt) UK.expr(g, 'ADBE Glo2-0004', UK.fmt(0.35 * k, 3) + ' * ' + amt + ' / 100');
+            var tt = tritone(c.layer, 'Bleach Tone', col(0.96, 0.96, 0.98), col(0.5, 0.5, 0.52), col(0.05, 0.05, 0.07), 100);
+            UK.set(tt, 'ADBE Tritone-0004', 100 - 35 * k);
+            if (amt) UK.expr(tt, 'ADBE Tritone-0004', '100 - ' + UK.fmt(35 * k) + ' * ' + amt + ' / 100');
+        }
+    });
+
+    UK.add({
+        id: 'fx.proTealOrange', cat: 'fx', name: 'Teal & Orange Pro · Блокбастер', preview: 'grade',
+        desc: 'Разделение тонов: бирюза в тенях, оранжевый в светах через Tritone-смесь + Color Balance + Vibrance.',
+        tags: 'teal orange blockbuster hollywood split toning кино pro',
+        apply: function (c) {
+            var amt = amount(c, 'T&O Amount'), k = c.strength;
+            var tt = tritone(c.layer, 'T&O Split', col(1, 0.72, 0.42), col(0.5, 0.5, 0.5), col(0.02, 0.2, 0.26), 100);
+            UK.set(tt, 'ADBE Tritone-0004', 100 - 45 * k);
+            if (amt) UK.expr(tt, 'ADBE Tritone-0004', '100 - ' + UK.fmt(45 * k) + ' * ' + amt + ' / 100');
+            if (c.opts.controls) {
+                driveColor(c, tt, 'ADBE Tritone-0001', 'T&O Highlights', col(1, 0.72, 0.42));
+                driveColor(c, tt, 'ADBE Tritone-0003', 'T&O Shadows', col(0.02, 0.2, 0.26));
+            }
+            var cb = colorBalance(c.layer, 'T&O Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [-18 * k, 6 * k, 26 * k, 4 * k, 0, -6 * k, 24 * k, 8 * k, -22 * k], amt);
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'T&O Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 30 * k, amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'T&O Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', 14 * k, amt); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proMoody', cat: 'fx', name: 'Moody Dark · Мрачный', preview: 'vignette',
+        desc: 'Приглушённый тёмный лук: ниже яркость, выше контраст, меньше насыщенность, тяжёлая виньетка.',
+        tags: 'moody dark cinematic desaturated vignette мрачный pro',
+        apply: function (c) {
+            var amt = amount(c, 'Moody Amount'), k = c.strength;
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Moody Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0001', -12 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0002', 24 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var hs = UK.addFx(c.layer, 'ADBE HUE SATURATION', 'Moody Desat');
+            look(hs, 'ADBE HUE SATURATION-0004', -28 * k, amt);
+            var cb = colorBalance(c.layer, 'Moody Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [-8 * k, 0, 12 * k, -4 * k, 0, 4 * k, 0, 0, 0], amt);
+            var vg = UK.addFx(c.layer, 'CC Vignette', 'Moody Vignette');
+            look(vg, 'CC Vignette-0001', 70 * k, amt); UK.set(vg, 'CC Vignette-0002', 55); UK.set(vg, 'CC Vignette-0004', 0);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proGoldenHour', cat: 'fx', name: 'Golden Hour · Золотой час', preview: 'leak',
+        desc: 'Тёплый фильтр, янтарные света, мягкое свечение бликов — свет заходящего солнца.',
+        tags: 'golden hour sunset warm amber glow закат тёплый pro',
+        apply: function (c) {
+            var amt = amount(c, 'Golden Amount'), k = c.strength;
+            var pf = UK.addFx(c.layer, 'ADBE Photo Filter', 'Golden Filter');
+            UK.set(pf, 'ADBE Photo Filter-0001', 1);
+            UK.set(pf, 'ADBE Photo Filter-0002', col(0.98, 0.62, 0.2));
+            look(pf, 'ADBE Photo Filter-0003', 32 * k, amt); UK.set(pf, 'ADBE Photo Filter-0004', 1);
+            if (c.opts.controls) driveColor(c, pf, 'ADBE Photo Filter-0002', 'Golden Color', col(0.98, 0.62, 0.2));
+            var cb = colorBalance(c.layer, 'Golden Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [4 * k, 0, -6 * k, 8 * k, 2 * k, -8 * k, 18 * k, 10 * k, -16 * k], amt);
+            var g = glow(c.layer, 'Golden Glow', 72, 120, 0.45 * k);
+            if (amt) UK.expr(g, 'ADBE Glo2-0004', UK.fmt(0.45 * k, 3) + ' * ' + amt + ' / 100');
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'Golden Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 12 * k, amt);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proMatte', cat: 'fx', name: 'Matte Fade · Приподнятые тени', preview: 'grade',
+        desc: 'Лифт теней (матовые чёрные), чуть ниже контраст, серая примесь и мягкая сочность — модный «faded» лук.',
+        tags: 'matte fade lifted blacks faded instagram матовый pro',
+        apply: function (c) {
+            var amt = amount(c, 'Matte Amount'), k = c.strength;
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Matte Lift');
+            look(bc, 'ADBE Brightness & Contrast 2-0001', 9 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0002', -14 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var tn = UK.addFx(c.layer, 'ADBE Tint', 'Matte Tint');
+            UK.set(tn, 'ADBE Tint-0001', col(0.12, 0.12, 0.14)); UK.set(tn, 'ADBE Tint-0002', col(0.95, 0.94, 0.92));
+            look(tn, 'ADBE Tint-0003', 22 * k, amt);
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'Matte Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 14 * k, amt); look(vb, 'ADBE Vibrance-0002', -8 * k, amt);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proPastelDream', cat: 'fx', name: 'Pastel Dream · Пастельный сон', preview: 'glow',
+        desc: 'Светлый, малонасыщенный лук с розовым фильтром и широким мягким свечением.',
+        tags: 'pastel dream soft pink airy light пастель pro',
+        apply: function (c) {
+            var amt = amount(c, 'Pastel Amount'), k = c.strength;
+            var hs = UK.addFx(c.layer, 'ADBE HUE SATURATION', 'Pastel HSL');
+            look(hs, 'ADBE HUE SATURATION-0004', -18 * k, amt); look(hs, 'ADBE HUE SATURATION-0005', 10 * k, amt);
+            var pf = UK.addFx(c.layer, 'ADBE Photo Filter', 'Pastel Filter');
+            UK.set(pf, 'ADBE Photo Filter-0002', col(1, 0.72, 0.82)); look(pf, 'ADBE Photo Filter-0003', 18 * k, amt); UK.set(pf, 'ADBE Photo Filter-0004', 1);
+            if (c.opts.controls) driveColor(c, pf, 'ADBE Photo Filter-0002', 'Pastel Color', col(1, 0.72, 0.82));
+            var g = glow(c.layer, 'Pastel Glow', 55, 220, 0.4 * k);
+            if (amt) UK.expr(g, 'ADBE Glo2-0004', UK.fmt(0.4 * k, 3) + ' * ' + amt + ' / 100');
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Pastel Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', -12 * k, amt); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proInfrared', cat: 'fx', name: 'Infrared · Инфракрасный', preview: 'grade',
+        desc: 'Channel Mixer: зелень уходит в розово-белое, небо темнеет — эффект ИК-плёнки (Aerochrome).',
+        tags: 'infrared aerochrome channel mixer ик сюрреализм pro',
+        apply: function (c) {
+            var amt = amount(c, 'IR Amount'), k = c.strength;
+            var cm = UK.addFx(c.layer, 'ADBE CHANNEL MIXER', 'IR Mixer');
+            // Red <- Green, Green <- Red (частично), Blue <- Blue приглушён
+            look(cm, 'ADBE CHANNEL MIXER-0001', 100 - 110 * k, amt); look(cm, 'ADBE CHANNEL MIXER-0002', 170 * k, amt);
+            look(cm, 'ADBE CHANNEL MIXER-0005', 60 * k, amt); look(cm, 'ADBE CHANNEL MIXER-0006', 100 - 50 * k, amt);
+            look(cm, 'ADBE CHANNEL MIXER-0011', 100 - 20 * k, amt); look(cm, 'ADBE CHANNEL MIXER-0010', 20 * k, amt);
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'IR Vibrance');
+            look(vb, 'ADBE Vibrance-0001', 20 * k, amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'IR Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', 12 * k, amt); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proNoir', cat: 'fx', name: 'Noir · Нуар', preview: 'vignette',
+        desc: 'Ч/б с плотными тенями, зерном и тяжёлой виньеткой. Red-фильтр для драматичного неба.',
+        tags: 'noir black white film grain vignette нуар чб pro',
+        apply: function (c) {
+            var amt = amount(c, 'Noir Amount'), k = c.strength;
+            var bw = UK.addFx(c.layer, 'ADBE Black&White', 'Noir B&W');
+            UK.set(bw, 'ADBE Black&White-0001', 70); UK.set(bw, 'ADBE Black&White-0002', 60); UK.set(bw, 'ADBE Black&White-0003', 30);
+            UK.set(bw, 'ADBE Black&White-0004', 20); UK.set(bw, 'ADBE Black&White-0005', 10); UK.set(bw, 'ADBE Black&White-0006', 60);
+            UK.set(bw, 'ADBE Black&White-0007', 0);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Noir Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0002', 40 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0001', -6 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var nz = UK.addFx(c.layer, 'ADBE Noise2', 'Noir Grain');
+            look(nz, 'ADBE Noise2-0001', 9 * k, amt); UK.set(nz, 'ADBE Noise2-0002', 0); UK.set(nz, 'ADBE Noise2-0003', 1);
+            var vg = UK.addFx(c.layer, 'CC Vignette', 'Noir Vignette');
+            look(vg, 'CC Vignette-0001', 85 * k, amt); UK.set(vg, 'CC Vignette-0002', 50); UK.set(vg, 'CC Vignette-0004', 0);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proDuotoneMap', cat: 'fx', name: 'Duotone Gradient Map · Карта градиента', preview: 'grade',
+        desc: 'Изображение переводится в два цвета (тени → света) как gradient map. Цвета — Color Control.',
+        tags: 'duotone gradient map two color spotify дуотон pro',
+        apply: function (c) {
+            var sh = col(0.08, 0.02, 0.35), hi = col(1, 0.55, 0.2);
+            var tn = UK.addFx(c.layer, 'ADBE Tint', 'Duotone Desat');
+            UK.set(tn, 'ADBE Tint-0003', 100);
+            var tt = tritone(c.layer, 'Duotone Map', hi, col(0.52, 0.28, 0.3), sh, 0);
+            driveColor(c, tt, 'ADBE Tritone-0001', 'Duotone Highlights', hi);
+            driveColor(c, tt, 'ADBE Tritone-0003', 'Duotone Shadows', sh);
+            if (c.opts.controls) UK.expr(tt, 'ADBE Tritone-0002', 'var a = ' + UK.ref('Duotone Highlights', 'color') + ', b = ' + UK.ref('Duotone Shadows', 'color') + ';\n(a + b) / 2');
+            drive(c, tt, 'ADBE Tritone-0004', 'Duotone Blend', Math.max(0, 100 - 100 * c.strength));
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Duotone Contrast');
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0002', 15); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            bc.moveTo(1);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proTritonePoster', cat: 'fx', name: 'Tritone Poster · Постер', preview: 'grade',
+        desc: 'Постеризация до 5 уровней + три ярких цвета — плакатный поп-арт.',
+        tags: 'poster tritone posterize pop art warhol плакат pro',
+        apply: function (c) {
+            var ps = UK.addFx(c.layer, 'ADBE Posterize', 'Poster Levels');
+            drive(c, ps, 'ADBE Posterize-0001', 'Poster Levels', Math.max(2, Math.round(6 - 2 * c.strength)));
+            var tt = tritone(c.layer, 'Poster Tone', col(1, 0.9, 0.2), col(0.9, 0.2, 0.45), col(0.1, 0.1, 0.4), 0);
+            driveColor(c, tt, 'ADBE Tritone-0001', 'Poster Highlights', col(1, 0.9, 0.2));
+            driveColor(c, tt, 'ADBE Tritone-0002', 'Poster Midtones', col(0.9, 0.2, 0.45));
+            driveColor(c, tt, 'ADBE Tritone-0003', 'Poster Shadows', col(0.1, 0.1, 0.4));
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Poster Contrast');
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0002', 25); UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            bc.moveTo(1);
+        }
+    });
+
+    // ================================================================ ОПТИКА: HALATION / FLARE / BOKEH / MIST
+    UK.add({
+        id: 'fx.proHalation', cat: 'fx', name: 'Halation · Красное гало', preview: 'glow',
+        desc: 'Плёночная засветка: копия слоя в Add, только красный канал, размыт и светится — красноватое гало вокруг ярких областей.',
+        tags: 'halation film red glow bloom гало плёнка pro',
+        apply: function (c) {
+            if (!isAV(c.layer)) {
+                var g0 = glow(c.layer, 'Halation', 72, 90, 0.6 * c.strength);
+                UK.set(g0, 'ADBE Glo2-0007', 2); UK.set(g0, 'ADBE Glo2-0012', col(1, 0.25, 0.1)); UK.set(g0, 'ADBE Glo2-0013', col(1, 0.6, 0.3));
+                drive(c, g0, 'ADBE Glo2-0004', 'Halation Intensity', 0.6 * c.strength);
+                return;
+            }
+            var d = c.layer.duplicate();
+            d.name = UK.PREFIX + 'Halation ' + c.layer.name;
+            d.blendingMode = BlendingMode.ADD;
+            var k = cs(c, d);
+            var sc = UK.addFx(d, 'ADBE Shift Channels', 'Halation Red');
+            UK.set(sc, 'ADBE Shift Channels-0002', 1); UK.set(sc, 'ADBE Shift Channels-0003', 10); UK.set(sc, 'ADBE Shift Channels-0004', 10);
+            var g = glow(d, 'Halation Glow', 70, 80, 1.2 * c.strength);
+            if (c.opts.controls) UK.expr(g, 'ADBE Glo2-0002', UK.cv(k, 'Halation Threshold', 70));
+            var b = gauss(d, 'Halation Blur', 18 * c.strength);
+            if (c.opts.controls) UK.expr(b, 'ADBE Gaussian Blur 2-0001', UK.cv(k, 'Halation Spread', 18 * c.strength));
+            opacity(k, d, 'Halation Opacity', 45 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proAnamorphic', cat: 'light', name: 'Anamorphic Streak · Анаморфный блик', preview: 'flash',
+        desc: 'Горизонтальная синяя полоса-блик (Ellipse + Directional Blur, Add). Позиция, цвет, длина и яркость — контролы на слое блика.',
+        tags: 'anamorphic flare streak lens blue horizontal анаморф блик pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [0, 0, 0], 'Anamorphic Streak');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.ADD;
+            var el = UK.addFx(s, 'ADBE Ellipse', 'Streak Core');
+            UK.set(el, 'ADBE Ellipse-0001', [W / 2, H / 2]);
+            UK.set(el, 'ADBE Ellipse-0002', W * 0.35); UK.set(el, 'ADBE Ellipse-0003', 6);
+            UK.set(el, 'ADBE Ellipse-0004', 60);
+            UK.set(el, 'ADBE Ellipse-0005', col(0.45, 0.7, 1)); UK.set(el, 'ADBE Ellipse-0006', col(0, 0, 0));
+            UK.set(el, 'ADBE Ellipse-0007', 0);
+            if (c.opts.controls) {
+                UK.expr(el, 'ADBE Ellipse-0001', UK.cv(k, 'Streak Position', [W / 2, H / 2], 'point'));
+                UK.expr(el, 'ADBE Ellipse-0002', UK.cv(k, 'Streak Length', W * 0.35));
+                UK.expr(el, 'ADBE Ellipse-0005', UK.cv(k, 'Streak Color', col(0.45, 0.7, 1), 'color'));
+            }
+            var db = UK.addFx(s, 'ADBE Motion Blur', 'Streak Blur');
+            UK.set(db, 'ADBE Motion Blur-0001', 90); UK.set(db, 'ADBE Motion Blur-0002', 260 * c.strength);
+            if (c.opts.controls) UK.expr(db, 'ADBE Motion Blur-0002', UK.cv(k, 'Streak Softness', 260 * c.strength));
+            var g = glow(s, 'Streak Glow', 20, 120, 1.5);
+            opacity(k, s, 'Streak Opacity', 80 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proBokeh', cat: 'light', name: 'Bokeh Overlay · Боке', preview: 'glow',
+        desc: 'Плывущие размытые круги света (Cell Pattern Bubbles + Blur + Glow, режим Add). Цвет, размер, скорость, прозрачность — контролы.',
+        tags: 'bokeh lights overlay particles blur боке огни pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Bokeh');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.ADD;
+            var cp = UK.addFx(s, 'ADBE Cell Pattern', 'Bokeh Cells');
+            UK.set(cp, 'ADBE Cell Pattern-0001', 1);     // Bubbles
+            UK.set(cp, 'ADBE Cell Pattern-0003', 320);   // Contrast
+            UK.set(cp, 'ADBE Cell Pattern-0004', 1);     // Overflow: Clip
+            UK.set(cp, 'ADBE Cell Pattern-0005', 1.1);   // Disperse
+            UK.set(cp, 'ADBE Cell Pattern-0006', 140 * c.strength);
+            var speed = UK.cv(k, 'Bokeh Speed', 6);
+            UK.expr(cp, ['ADBE Cell Pattern-0012', 'Evolution'], 'time * ' + speed);
+            UK.expr(cp, 'ADBE Cell Pattern-0007', 'value + [0, -time * ' + speed + ' * 3]');
+            if (c.opts.controls) UK.expr(cp, 'ADBE Cell Pattern-0006', UK.cv(k, 'Bokeh Size', 140 * c.strength));
+            gauss(s, 'Bokeh Blur', 22);
+            var tn = UK.addFx(s, 'ADBE Tint', 'Bokeh Color');
+            UK.set(tn, 'ADBE Tint-0001', col(0, 0, 0)); UK.set(tn, 'ADBE Tint-0002', col(1, 0.8, 0.5));
+            if (c.opts.controls) UK.expr(tn, 'ADBE Tint-0002', UK.cv(k, 'Bokeh Color', col(1, 0.8, 0.5), 'color'));
+            glow(s, 'Bokeh Glow', 40, 80, 1.2);
+            opacity(k, s, 'Bokeh Opacity', 55 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proMist', cat: 'fx', name: 'Pro-Mist · Диффузионный фильтр', preview: 'glow',
+        desc: 'Имитация Black Pro-Mist: размытая копия в Screen + лёгкое свечение, света расплываются.',
+        tags: 'pro mist diffusion filter bloom halo дымка фильтр pro',
+        apply: function (c) {
+            if (!isAV(c.layer)) {
+                var g0 = glow(c.layer, 'Pro-Mist', 50, 180, 0.5 * c.strength);
+                drive(c, g0, 'ADBE Glo2-0004', 'Mist Intensity', 0.5 * c.strength);
+                return;
+            }
+            var d = c.layer.duplicate();
+            d.name = UK.PREFIX + 'Pro-Mist ' + c.layer.name;
+            d.blendingMode = BlendingMode.SCREEN;
+            var k = cs(c, d);
+            var b = gauss(d, 'Mist Blur', 40 * c.strength);
+            if (c.opts.controls) UK.expr(b, 'ADBE Gaussian Blur 2-0001', UK.cv(k, 'Mist Blur', 40 * c.strength));
+            var bc = UK.addFx(d, 'ADBE Brightness & Contrast 2', 'Mist Levels');
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0001', -20); UK.set(bc, 'ADBE Brightness & Contrast 2-0002', 30);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            opacity(k, d, 'Mist Opacity', 40 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proBeauty', cat: 'fx', name: 'Soft Skin · Бьюти-смягчение', preview: 'blurIn',
+        desc: 'Мягкая копия слоя в режиме Lighten с низкой прозрачностью — сглаживает кожу, сохраняя детали.',
+        tags: 'beauty soft skin smooth retouch бьюти кожа pro',
+        apply: function (c) {
+            if (!isAV(c.layer)) {
+                var bl = UK.addFx(c.layer, 'ADBE Bilateral', 'Soft Skin');
+                UK.set(bl, ['ADBE Bilateral-0001', 'Radius'], 8 * c.strength);
+                UK.set(bl, ['ADBE Bilateral-0002', 'Threshold'], 12);
+                return;
+            }
+            var d = c.layer.duplicate();
+            d.name = UK.PREFIX + 'Soft Skin ' + c.layer.name;
+            d.blendingMode = BlendingMode.LIGHTEN;
+            var k = cs(c, d);
+            var b = gauss(d, 'Skin Blur', 14 * c.strength);
+            if (c.opts.controls) UK.expr(b, 'ADBE Gaussian Blur 2-0001', UK.cv(k, 'Skin Blur', 14 * c.strength));
+            opacity(k, d, 'Skin Opacity', 45 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proSharpen', cat: 'fx', name: 'Sharpen Pro · Резкость + микроблеск', preview: 'grade',
+        desc: 'Unsharp Mask с малым радиусом + едва заметное свечение светов — хрустящая, но не «цифровая» резкость.',
+        tags: 'sharpen crisp detail unsharp резкость pro',
+        apply: function (c) {
+            var um = UK.addFx(c.layer, 'ADBE Unsharp Mask2', 'Sharpen');
+            drive(c, um, 'ADBE Unsharp Mask2-0001', 'Sharpen Amount', 70 * c.strength);
+            UK.set(um, 'ADBE Unsharp Mask2-0002', 1.6); UK.set(um, 'ADBE Unsharp Mask2-0003', 2);
+            var g = glow(c.layer, 'Sharpen Shine', 85, 12, 0.18 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proClarity', cat: 'fx', name: 'Clarity · Локальный контраст', preview: 'grade',
+        desc: 'Unsharp Mask с большим радиусом и малой силой — «Clarity» как в Lightroom, плюс немного Vibrance.',
+        tags: 'clarity local contrast structure midtone детализация pro',
+        apply: function (c) {
+            var um = UK.addFx(c.layer, 'ADBE Unsharp Mask2', 'Clarity');
+            drive(c, um, 'ADBE Unsharp Mask2-0001', 'Clarity Amount', 28 * c.strength);
+            UK.set(um, 'ADBE Unsharp Mask2-0002', 60); UK.set(um, 'ADBE Unsharp Mask2-0003', 0);
+            var vb = UK.addFx(c.layer, 'ADBE Vibrance', 'Clarity Vibrance');
+            UK.set(vb, 'ADBE Vibrance-0001', 10 * c.strength);
+        }
+    });
+
+    // ================================================================ ТЕКСТУРЫ / ОВЕРЛЕИ
+    UK.add({
+        id: 'fx.proDust', cat: 'fx', name: 'Dust & Scratches · Пыль и царапины', preview: 'grain',
+        desc: 'Оверлей: редкие белые пылинки (случайные по кадрам) и тонкие вертикальные царапины, режим Screen.',
+        tags: 'dust scratches film overlay old пыль царапины плёнка pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Dust & Scratches');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.SCREEN;
+            // пылинки
+            fractal(s, 'Dust', { type: 1, noise: 1, contrast: 420, brightness: -230, overflow: 1, scale: 14, complexity: 2,
+                evo: 'posterizeTime(' + UK.fmt(Math.max(2, 10 * c.strength)) + '); random() * 3000' });
+            // царапины — второй Fractal Noise в режиме Screen
+            var sc = fractal(s, 'Scratches', { type: 1, noise: 1, contrast: 600, brightness: -300, overflow: 1, sw: 3, sh: 6000, complexity: 1,
+                evo: 'posterizeTime(3); random() * 500', offset: 'posterizeTime(3); [random() * 2000, 0]' });
+            UK.set(sc, ['ADBE Fractal Noise-0028', 'Blending Mode'], 5); // Screen
+            var d = UK.cv(k, 'Dust Amount', 100 * c.strength);
+            var nz = UK.addFx(s, 'ADBE Noise2', 'Dust Fine');
+            UK.set(nz, 'ADBE Noise2-0001', 6); UK.set(nz, 'ADBE Noise2-0002', 0); UK.set(nz, 'ADBE Noise2-0003', 1);
+            s.transform.opacity.expression = 'Math.max(0, Math.min(100, ' + d + ' * 0.7))';
+        }
+    });
+
+    UK.add({
+        id: 'light.proLeakPro', cat: 'light', name: 'Light Leak Pro · Двойная засветка', preview: 'leak',
+        desc: 'Два слоя плывущих засветок разных цветов (тёплый + пурпурно-бирюзовый) в режиме Add с медленным дрейфом.',
+        tags: 'light leak pro double warm magenta teal засветка плёнка pro',
+        apply: function (c) {
+            function leak(name, color, sw, sh, speed, op, seedOff) {
+                var s = overlay(c, [0, 0, 0], name);
+                var k = cs(c, s);
+                s.blendingMode = BlendingMode.ADD;
+                var sp = UK.cv(k, name + ' Speed', speed);
+                fractal(s, name + ' Noise', { type: 1, noise: 3, contrast: 80, brightness: -30, sw: sw, sh: sh, complexity: 2,
+                    evo: UK.fmt(seedOff) + ' + time * ' + sp, offset: 'value + [time * ' + sp + ' * 3, time * ' + sp + ']' });
+                var tn = UK.addFx(s, 'ADBE Tint', name + ' Color');
+                UK.set(tn, 'ADBE Tint-0001', col(0, 0, 0)); UK.set(tn, 'ADBE Tint-0002', color);
+                if (c.opts.controls) UK.expr(tn, 'ADBE Tint-0002', UK.cv(k, name + ' Color', color, 'color'));
+                gauss(s, name + ' Soft', 60);
+                opacity(k, s, name + ' Opacity', op * c.strength);
+            }
+            leak('Leak Warm', col(1, 0.62, 0.25), 1100, 400, 30, 60, 0);
+            leak('Leak Cool', col(0.85, 0.25, 0.7), 700, 900, 18, 35, 400);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proFilmBorder', cat: 'fx', name: 'Film Frame 8mm · Рамка плёнки', preview: 'letterbox',
+        desc: 'Чёрная рамка с рваными краями (Roughen Edges) и лёгким дрожанием — кадр Super 8.',
+        tags: 'film frame 8mm 16mm border roughen edges рамка плёнка pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [0, 0, 0], 'Film Frame');
+            var k = cs(c, s);
+            var ins = Math.round(Math.min(W, H) * 0.05 * c.strength);
+            var sh = new Shape();
+            sh.vertices = [[ins, ins], [W - ins, ins], [W - ins, H - ins], [ins, H - ins]];
+            sh.inTangents = [[0, 0], [0, 0], [0, 0], [0, 0]]; sh.outTangents = [[0, 0], [0, 0], [0, 0], [0, 0]];
+            sh.closed = true;
+            var m = addMask(s, sh, 'Frame Cutout');
+            m.inverted = true;
+            m.property('ADBE Mask Feather').setValue([3, 3]);
+            if (c.opts.controls) {
+                var ref = UK.cv(k, 'Frame Inset', ins);
+                m.property('ADBE Mask Shape').expression = 'var i = ' + ref + ', w = thisLayer.width, h = thisLayer.height;\n' +
+                    'createPath([[i, i], [w - i, i], [w - i, h - i], [i, h - i]], [], [], true);';
+            }
+            var re = UK.addFx(s, 'ADBE Roughen Edges', 'Frame Roughen');
+            UK.set(re, 'ADBE Roughen Edges-0001', 1);
+            UK.set(re, 'ADBE Roughen Edges-0003', 22 * c.strength);
+            UK.set(re, 'ADBE Roughen Edges-0004', 1.2);
+            UK.set(re, 'ADBE Roughen Edges-0006', 60);
+            UK.expr(re, 'ADBE Roughen Edges-0010', 'posterizeTime(8); time * 300');
+            var wig = UK.cv(k, 'Frame Weave', 3 * c.strength);
+            s.transform.position.expression = 'wiggle(6, ' + wig + ')';
+        }
+    });
+
+    UK.add({
+        id: 'fx.proGateWeave', cat: 'fx', name: 'Gate Weave · Дрожание кинопроектора', preview: 'shake',
+        desc: 'Мелкое плавание кадра по позиции и повороту, как у кинопроектора. Амплитуда и частота — контролы.',
+        tags: 'gate weave projector jitter film wobble дрожание проектор pro',
+        apply: function (c) {
+            var amp = UK.cv(c, 'Weave Amount', 3 * c.strength), fr = UK.cv(c, 'Weave Freq', 2.5);
+            c.layer.transform.position.expression = 'wiggle(' + fr + ', ' + amp + ')';
+            c.layer.transform.rotation.expression = 'wiggle(' + fr + ', ' + amp + ' * 0.05)';
+            var sc = c.layer.transform.scale;
+            sc.expression = 'var w = wiggle(' + fr + ', ' + amp + ' * 0.08);\n[value[0] + (w[0] - value[0]), value[1] + (w[0] - value[0])]';
+            UK.motionBlur(c.layer, c.comp);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proFlickerExposure', cat: 'fx', name: 'Exposure Flicker · Мерцание экспозиции', preview: 'strobe',
+        desc: 'Случайное колебание экспозиции (Exposure wiggle) — плёночное мерцание. Амплитуда и частота — контролы.',
+        tags: 'flicker exposure film frame мерцание экспозиция pro',
+        apply: function (c) {
+            var ex = UK.addFx(c.layer, 'ADBE Exposure2', 'Exposure Flicker');
+            var amp = UK.cv(c, 'Flicker Amount', 0.18 * c.strength), fr = UK.cv(c, 'Flicker Freq', 9);
+            UK.set(ex, ['ADBE Exposure2-0003', 'Exposure'], 0);
+            UK.expr(ex, ['ADBE Exposure2-0003', 'Exposure'], 'wiggle(' + fr + ', ' + amp + ')[0] - 0');
+        }
+    });
+
+    UK.add({
+        id: 'fx.proCRT', cat: 'fx', name: 'CRT Monitor · Кинескоп', preview: 'rgb',
+        desc: 'Тонкие строки развёртки (Grid), бочкообразное искажение, RGB-разделение по краям, виньетка и лёгкое свечение.',
+        tags: 'crt monitor tv scanlines bulge rgb retro кинескоп pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height, k = c.strength;
+            var gr = UK.addFx(c.layer, 'ADBE Grid', 'CRT Scanlines');
+            UK.set(gr, 'ADBE Grid-0001', [0, 0]);
+            UK.set(gr, 'ADBE Grid-0002', 3);
+            UK.set(gr, 'ADBE Grid-0004', W * 4); UK.set(gr, 'ADBE Grid-0005', 3);
+            UK.set(gr, 'ADBE Grid-0006', 1.2);
+            UK.set(gr, 'ADBE Grid-0011', col(0, 0, 0));
+            drive(c, gr, 'ADBE Grid-0012', 'CRT Lines Opacity', 38 * k);
+            UK.set(gr, 'ADBE Grid-0013', 2);
+            var cbl = UK.addFx(c.layer, 'ADBE Channel Blur', 'CRT Fringe');
+            drive(c, cbl, 'ADBE Channel Blur-0001', 'CRT Fringe', 3 * k);
+            UK.set(cbl, 'ADBE Channel Blur-0003', 2 * k); UK.set(cbl, 'ADBE Channel Blur-0005', 1); UK.set(cbl, 'ADBE Channel Blur-0006', 2);
+            var bg = UK.addFx(c.layer, 'ADBE Bulge', 'CRT Curve');
+            UK.set(bg, 'ADBE Bulge-0001', W * 0.78); UK.set(bg, 'ADBE Bulge-0002', H * 0.78);
+            UK.set(bg, 'ADBE Bulge-0003', [W / 2, H / 2]);
+            drive(c, bg, 'ADBE Bulge-0004', 'CRT Curvature', 0.35 * k);
+            UK.set(bg, 'ADBE Bulge-0007', 1);
+            var vg = UK.addFx(c.layer, 'CC Vignette', 'CRT Vignette');
+            UK.set(vg, 'CC Vignette-0001', 55 * k); UK.set(vg, 'CC Vignette-0002', 60); UK.set(vg, 'CC Vignette-0004', 0);
+            glow(c.layer, 'CRT Phosphor', 70, 25, 0.25 * k);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proVHS', cat: 'fx', name: 'VHS Pro · Кассета с трекингом', preview: 'glitch',
+        desc: 'Тонкая волна, хроматический смаз по горизонтали, цветной шум HLS и бегущая полоса трекинга (отдельный слой).',
+        tags: 'vhs pro tracking tape noise retro кассета полоса pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height, k = c.strength;
+            var ww = UK.addFx(c.layer, 'ADBE Wave Warp', 'VHS Wave');
+            UK.set(ww, 'ADBE Wave Warp-0001', 1);
+            drive(c, ww, 'ADBE Wave Warp-0002', 'VHS Wave', 2.5 * k);
+            UK.set(ww, 'ADBE Wave Warp-0003', 600); UK.set(ww, 'ADBE Wave Warp-0004', 90); UK.set(ww, 'ADBE Wave Warp-0005', 0.4);
+            UK.set(ww, 'ADBE Wave Warp-0006', 1); UK.set(ww, 'ADBE Wave Warp-0008', 1);
+            var cbl = UK.addFx(c.layer, 'ADBE Channel Blur', 'VHS Chroma');
+            drive(c, cbl, 'ADBE Channel Blur-0001', 'VHS Chroma Smear', 6 * k);
+            UK.set(cbl, 'ADBE Channel Blur-0003', 6 * k); UK.set(cbl, 'ADBE Channel Blur-0005', 1); UK.set(cbl, 'ADBE Channel Blur-0006', 2);
+            var nh = UK.addFx(c.layer, 'ADBE Noise HLS2', 'VHS Noise');
+            UK.set(nh, 'ADBE Noise HLS2-0001', 1);
+            drive(c, nh, 'ADBE Noise HLS2-0003', 'VHS Noise', 14 * k);
+            UK.set(nh, 'ADBE Noise HLS2-0004', 10 * k); UK.set(nh, 'ADBE Noise HLS2-0005', 2);
+            UK.expr(nh, 'ADBE Noise HLS2-0006', 'time * 900');
+            var hs = UK.addFx(c.layer, 'ADBE HUE SATURATION', 'VHS Desat');
+            UK.set(hs, 'ADBE HUE SATURATION-0004', -12 * k);
+            // полоса трекинга
+            var s = overlay(c, [1, 1, 1], 'VHS Tracking Bar');
+            var kk = cs(c, s);
+            s.blendingMode = BlendingMode.SCREEN;
+            var bh = Math.round(H * 0.04);
+            var sh = new Shape();
+            sh.vertices = [[0, 0], [W, 0], [W, bh], [0, bh]];
+            sh.inTangents = [[0, 0], [0, 0], [0, 0], [0, 0]]; sh.outTangents = [[0, 0], [0, 0], [0, 0], [0, 0]];
+            sh.closed = true;
+            var m = addMask(s, sh, 'Tracking Strip');
+            m.property('ADBE Mask Feather').setValue([0, 12]);
+            var nz = UK.addFx(s, 'ADBE Noise2', 'Tracking Noise');
+            UK.set(nz, 'ADBE Noise2-0001', 60); UK.set(nz, 'ADBE Noise2-0002', 0); UK.set(nz, 'ADBE Noise2-0003', 1);
+            var sp = UK.cv(kk, 'Tracking Speed', 0.35), per = UK.cv(kk, 'Tracking Period', 4);
+            s.transform.position.expression = 'var p = ' + per + ', s = ' + sp + ';\nvar t = (time * s) % p;\n' +
+                'var y = linear(t, 0, Math.min(p, 1.2), thisComp.height + 60, -60);\n[value[0], value[1] - thisComp.height / 2 + y]';
+            opacity(kk, s, 'Tracking Opacity', 22 * k);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proGlitchTexture', cat: 'fx', name: 'Glitch Texture · Постоянный лёгкий глитч', preview: 'glitch',
+        desc: 'Скрытая карта (Fractal Noise Block, ступенчатая по времени) смещает слой по горизонтали — живая цифровая текстура.',
+        tags: 'glitch texture displacement datamosh digital постоянный глитч pro',
+        apply: function (c) {
+            var map = UK.solid(c.comp, [0.5, 0.5, 0.5], 'Glitch Map ' + c.layer.name, c.layer.inPoint, c.layer.outPoint);
+            map.moveBefore(c.layer);
+            map.enabled = false;
+            fractal(map, 'Glitch Blocks', { type: 1, noise: 1, contrast: 260, brightness: 0, overflow: 1, sw: 2600, sh: 26, complexity: 1,
+                evo: 'posterizeTime(' + UK.fmt(Math.max(2, 6 * c.strength)) + '); random() * 4000', offset: 'posterizeTime(6); [random() * 3000, random() * 3000]' });
+            var dm = UK.addFx(c.layer, 'ADBE Displacement Map', 'Glitch Displace');
+            UK.set(dm, 'ADBE Displacement Map-0001', map.index);
+            UK.set(dm, 'ADBE Displacement Map-0002', 5);
+            drive(c, dm, 'ADBE Displacement Map-0003', 'Glitch Amount', 22 * c.strength);
+            UK.set(dm, 'ADBE Displacement Map-0004', 10);
+            UK.set(dm, 'ADBE Displacement Map-0005', 0);
+            UK.set(dm, 'ADBE Displacement Map-0006', 2);
+            UK.set(dm, 'ADBE Displacement Map-0007', 2);
+            var cbl = UK.addFx(c.layer, 'ADBE Channel Blur', 'Glitch Fringe');
+            UK.set(cbl, 'ADBE Channel Blur-0001', 2 * c.strength); UK.set(cbl, 'ADBE Channel Blur-0003', 2 * c.strength);
+            UK.set(cbl, 'ADBE Channel Blur-0005', 1); UK.set(cbl, 'ADBE Channel Blur-0006', 2);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proGradientOverlay', cat: 'fx', name: 'Gradient Overlay · Цветной градиент', preview: 'grade',
+        desc: 'Двухцветный градиент поверх (Overlay). Цвета, направление и прозрачность — контролы на слое градиента.',
+        tags: 'gradient overlay duotone color wash instagram градиент pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [0, 0, 0], 'Gradient Overlay');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.OVERLAY;
+            var rp = UK.addFx(s, 'ADBE Ramp', 'Gradient');
+            var a = col(0.95, 0.35, 0.25), b = col(0.2, 0.3, 0.95);
+            var p0 = c.dirV[0] !== 0 ? [c.dirV[0] < 0 ? 0 : W, H / 2] : [W / 2, c.dirV[1] < 0 ? 0 : H];
+            var p1 = [W - p0[0], H - p0[1]];
+            UK.set(rp, 'ADBE Ramp-0001', p0); UK.set(rp, 'ADBE Ramp-0003', p1);
+            UK.set(rp, 'ADBE Ramp-0002', a); UK.set(rp, 'ADBE Ramp-0004', b);
+            UK.set(rp, 'ADBE Ramp-0005', 1); UK.set(rp, 'ADBE Ramp-0006', 10);
+            if (c.opts.controls) {
+                UK.expr(rp, 'ADBE Ramp-0002', UK.cv(k, 'Gradient Color A', a, 'color'));
+                UK.expr(rp, 'ADBE Ramp-0004', UK.cv(k, 'Gradient Color B', b, 'color'));
+                UK.expr(rp, 'ADBE Ramp-0001', UK.cv(k, 'Gradient Start', p0, 'point'));
+                UK.expr(rp, 'ADBE Ramp-0003', UK.cv(k, 'Gradient End', p1, 'point'));
+            }
+            opacity(k, s, 'Gradient Opacity', 55 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proColorVignette', cat: 'fx', name: 'Color Vignette · Цветная виньетка', preview: 'vignette',
+        desc: 'Радиальный градиент (Multiply): светлый центр, цветные края. Цвет края, радиус и прозрачность — контролы.',
+        tags: 'color vignette radial multiply tint edges виньетка цветная pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [1, 1, 1], 'Color Vignette');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.MULTIPLY;
+            var rp = UK.addFx(s, 'ADBE Ramp', 'Vignette Ramp');
+            var edge = col(0.35, 0.1, 0.25);
+            UK.set(rp, 'ADBE Ramp-0001', [W / 2, H / 2]); UK.set(rp, 'ADBE Ramp-0003', [W, H]);
+            UK.set(rp, 'ADBE Ramp-0002', col(1, 1, 1)); UK.set(rp, 'ADBE Ramp-0004', edge);
+            UK.set(rp, 'ADBE Ramp-0005', 2); UK.set(rp, 'ADBE Ramp-0006', 15);
+            if (c.opts.controls) {
+                UK.expr(rp, 'ADBE Ramp-0004', UK.cv(k, 'Vignette Color', edge, 'color'));
+                var r = UK.cv(k, 'Vignette Radius', 100);
+                UK.expr(rp, 'ADBE Ramp-0003', 'var r = ' + r + ' / 100;\n[thisComp.width / 2 + thisComp.width / 2 * r, thisComp.height / 2 + thisComp.height / 2 * r]');
+            }
+            opacity(k, s, 'Vignette Opacity', 70 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proSpotMove', cat: 'light', name: 'Moving Spotlight · Прожектор за точкой', preview: 'sweep',
+        desc: 'Затемняющий слой с мягким эллиптическим «окном», которое следует за Point Control (анимируйте точку).',
+        tags: 'spotlight moving point follow dark mask прожектор pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [0, 0, 0], 'Spotlight');
+            var k = cs(c, s);
+            var rx = W * 0.22 * c.strength, ry = H * 0.3 * c.strength;
+            var m = addMask(s, ellipseShape(W / 2, H / 2, rx, ry), 'Spot Window');
+            m.inverted = true;
+            m.property('ADBE Mask Feather').setValue([Math.round(rx * 0.6), Math.round(rx * 0.6)]);
+            if (c.opts.controls) {
+                var cref = UK.cv(k, 'Spot Center', [W / 2, H / 2], 'point');
+                var rref = UK.cv(k, 'Spot Radius', rx);
+                m.property('ADBE Mask Shape').expression = ellipseExpr(cref, rref, rref + ' * ' + UK.fmt(ry / rx, 3));
+                m.property('ADBE Mask Feather').expression = 'var f = ' + UK.cv(k, 'Spot Feather', Math.round(rx * 0.6)) + ';\n[f, f]';
+            }
+            opacity(k, s, 'Spot Darkness', 75 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proLensDirt', cat: 'fx', name: 'Lens Dirt · Грязь на объективе', preview: 'grain',
+        desc: 'Размытые пятна и крошки на стекле (Cell Pattern + Blur, Screen) с низкой прозрачностью — проявляются на светлом.',
+        tags: 'lens dirt dust glass overlay bokeh грязь объектив pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Lens Dirt');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.SCREEN;
+            var cp = UK.addFx(s, 'ADBE Cell Pattern', 'Dirt Cells');
+            UK.set(cp, 'ADBE Cell Pattern-0001', 3);
+            UK.set(cp, 'ADBE Cell Pattern-0003', 180); UK.set(cp, 'ADBE Cell Pattern-0004', 1);
+            UK.set(cp, 'ADBE Cell Pattern-0005', 1.3); UK.set(cp, 'ADBE Cell Pattern-0006', 55);
+            var bc = UK.addFx(s, 'ADBE Brightness & Contrast 2', 'Dirt Levels');
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0001', -40); UK.set(bc, 'ADBE Brightness & Contrast 2-0002', 60);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            gauss(s, 'Dirt Blur', 18);
+            glow(s, 'Dirt Glow', 30, 60, 0.8);
+            opacity(k, s, 'Dirt Opacity', 20 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proSpeedLines', cat: 'fx', name: 'Speed Lines · Манга-линии', preview: 'rays',
+        desc: 'Радиальные линии скорости от центра (Fractal Noise → Polar), центр открыт мягкой маской, режим Add. Для аниме/комикс-ударов.',
+        tags: 'speed lines manga anime radial action линии скорости pro',
+        apply: function (c) {
+            var W = c.comp.width, H = c.comp.height;
+            var s = overlay(c, [0, 0, 0], 'Speed Lines');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.ADD;
+            fractal(s, 'Lines Noise', { type: 1, noise: 1, contrast: 380, brightness: -120, overflow: 1, sw: 6, sh: 9000, complexity: 1,
+                evo: 'posterizeTime(12); random() * 2000', offset: 'posterizeTime(12); [random() * 4000, 0]' });
+            var pc = UK.addFx(s, 'ADBE Polar Coordinates', 'Lines Polar');
+            UK.set(pc, 'ADBE Polar Coordinates-0001', 100); UK.set(pc, 'ADBE Polar Coordinates-0002', 2);
+            var r = Math.min(W, H) * 0.3;
+            var m = addMask(s, ellipseShape(W / 2, H / 2, r, r * 0.8), 'Lines Hole');
+            m.inverted = true;
+            m.property('ADBE Mask Feather').setValue([r * 0.9, r * 0.9]);
+            if (c.opts.controls) {
+                var cref = UK.cv(k, 'Lines Center', [W / 2, H / 2], 'point'), rref = UK.cv(k, 'Lines Hole', r);
+                m.property('ADBE Mask Shape').expression = ellipseExpr(cref, rref, rref + ' * 0.8');
+            }
+            var tn = UK.addFx(s, 'ADBE Tint', 'Lines Color');
+            UK.set(tn, 'ADBE Tint-0001', col(0, 0, 0)); UK.set(tn, 'ADBE Tint-0002', col(1, 1, 1));
+            if (c.opts.controls) UK.expr(tn, 'ADBE Tint-0002', UK.cv(k, 'Lines Color', col(1, 1, 1), 'color'));
+            opacity(k, s, 'Lines Opacity', 80 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proRain', cat: 'light', name: 'Rain Overlay · Дождь', preview: 'liquid',
+        desc: 'Слой CC Rainfall поверх в режиме Add. Плотность, скорость и прозрачность — контролы на слое дождя.',
+        tags: 'rain overlay weather drops cc rainfall дождь погода pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Rain');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.ADD;
+            var rf = UK.addFx(s, 'CC Rainfall', 'Rainfall');
+            UK.set(rf, ['CC Rainfall-0001', 'Drops'], 3000 * c.strength);
+            UK.set(rf, ['CC Rainfall-0002', 'Size'], 3);
+            UK.set(rf, ['CC Rainfall-0004', 'Speed'], 6000);
+            UK.set(rf, ['CC Rainfall-0005', 'Wind'], 300);
+            if (c.opts.controls) {
+                UK.expr(rf, ['CC Rainfall-0001', 'Drops'], UK.cv(k, 'Rain Drops', 3000 * c.strength));
+                UK.expr(rf, ['CC Rainfall-0005', 'Wind'], UK.cv(k, 'Rain Wind', 300));
+            }
+            opacity(k, s, 'Rain Opacity', 70 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proSnow', cat: 'light', name: 'Snow Overlay · Снег', preview: 'grain',
+        desc: 'Слой CC Snowfall поверх в режиме Screen с мягким свечением. Количество и размер — контролы.',
+        tags: 'snow overlay winter flakes cc snowfall снег зима pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Snow');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.SCREEN;
+            var sf = UK.addFx(s, 'CC Snowfall', 'Snowfall');
+            UK.set(sf, ['CC Snowfall-0001', 'Flakes'], 5000 * c.strength);
+            UK.set(sf, ['CC Snowfall-0002', 'Size'], 7);
+            UK.set(sf, ['CC Snowfall-0004', 'Speed'], 350);
+            UK.set(sf, ['CC Snowfall-0005', 'Wind'], 60);
+            if (c.opts.controls) {
+                UK.expr(sf, ['CC Snowfall-0001', 'Flakes'], UK.cv(k, 'Snow Flakes', 5000 * c.strength));
+                UK.expr(sf, ['CC Snowfall-0002', 'Size'], UK.cv(k, 'Snow Size', 7));
+            }
+            glow(s, 'Snow Glow', 40, 20, 0.6);
+            opacity(k, s, 'Snow Opacity', 85 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'light.proSparkles', cat: 'light', name: 'Sparkles · Искры', preview: 'glow',
+        desc: 'Мелкие мерцающие искорки (Cell Pattern Plates + Glow, Add), мерцание через ступенчатую эволюцию.',
+        tags: 'sparkles glitter twinkle magic искры блёстки pro',
+        apply: function (c) {
+            var s = overlay(c, [0, 0, 0], 'Sparkles');
+            var k = cs(c, s);
+            s.blendingMode = BlendingMode.ADD;
+            var cp = UK.addFx(s, 'ADBE Cell Pattern', 'Sparkle Cells');
+            UK.set(cp, 'ADBE Cell Pattern-0001', 3);
+            UK.set(cp, 'ADBE Cell Pattern-0003', 450); UK.set(cp, 'ADBE Cell Pattern-0004', 1);
+            UK.set(cp, 'ADBE Cell Pattern-0005', 1.4); UK.set(cp, 'ADBE Cell Pattern-0006', 22 * c.strength);
+            var sp = UK.cv(k, 'Sparkle Speed', 8);
+            UK.expr(cp, ['ADBE Cell Pattern-0012', 'Evolution'], 'posterizeTime(' + sp + '); random() * 1000');
+            var bc = UK.addFx(s, 'ADBE Brightness & Contrast 2', 'Sparkle Levels');
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0001', -85); UK.set(bc, 'ADBE Brightness & Contrast 2-0002', 80);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var g = glow(s, 'Sparkle Glow', 20, 14, 2);
+            UK.set(g, 'ADBE Glo2-0007', 2); UK.set(g, 'ADBE Glo2-0012', col(1, 1, 1)); UK.set(g, 'ADBE Glo2-0013', col(1, 0.85, 0.5));
+            if (c.opts.controls) UK.expr(g, 'ADBE Glo2-0013', UK.cv(k, 'Sparkle Color', col(1, 0.85, 0.5), 'color'));
+            opacity(k, s, 'Sparkle Opacity', 70 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proSplitTone', cat: 'fx', name: 'Split Toning · Раздельное тонирование', preview: 'grade',
+        desc: 'Отдельные цвета для теней и светов (Tritone с нейтральными полутонами) с контролем баланса.',
+        tags: 'split toning shadows highlights color grade тонирование pro',
+        apply: function (c) {
+            var sh = col(0.2, 0.3, 0.5), hi = col(1, 0.9, 0.7);
+            var tt = tritone(c.layer, 'Split Tone', hi, col(0.5, 0.5, 0.5), sh, 100 - 40 * c.strength);
+            driveColor(c, tt, 'ADBE Tritone-0001', 'Highlights Tone', hi);
+            driveColor(c, tt, 'ADBE Tritone-0003', 'Shadows Tone', sh);
+            drive(c, tt, 'ADBE Tritone-0004', 'Split Balance', 100 - 40 * c.strength);
+        }
+    });
+
+    UK.add({
+        id: 'fx.proFilmFade', cat: 'fx', name: 'Faded Film · Выцветшая плёнка 70-х', preview: 'grain',
+        desc: 'Жёлто-зелёный сдвиг, низкий контраст, лифт теней, зерно и лёгкое размытие — старая выцветшая плёнка.',
+        tags: 'faded film 70s retro vintage yellow выцветшая плёнка pro',
+        apply: function (c) {
+            var amt = amount(c, 'Faded Amount'), k = c.strength;
+            var cb = colorBalance(c.layer, 'Faded Balance', [0, 0, 0, 0, 0, 0, 0, 0, 0]);
+            cbLook(cb, [6 * k, 10 * k, -14 * k, 8 * k, 8 * k, -12 * k, 14 * k, 10 * k, -20 * k], amt);
+            var bc = UK.addFx(c.layer, 'ADBE Brightness & Contrast 2', 'Faded Contrast');
+            look(bc, 'ADBE Brightness & Contrast 2-0001', 10 * k, amt); look(bc, 'ADBE Brightness & Contrast 2-0002', -20 * k, amt);
+            UK.set(bc, 'ADBE Brightness & Contrast 2-0003', 0);
+            var hs = UK.addFx(c.layer, 'ADBE HUE SATURATION', 'Faded Desat');
+            look(hs, 'ADBE HUE SATURATION-0004', -22 * k, amt);
+            var nz = UK.addFx(c.layer, 'ADBE Noise2', 'Faded Grain');
+            look(nz, 'ADBE Noise2-0001', 10 * k, amt); UK.set(nz, 'ADBE Noise2-0002', 1); UK.set(nz, 'ADBE Noise2-0003', 1);
+            var b = gauss(c.layer, 'Faded Soft', 0.8 * k);
+            var vg = UK.addFx(c.layer, 'CC Vignette', 'Faded Vignette');
+            look(vg, 'CC Vignette-0001', 35 * k, amt); UK.set(vg, 'CC Vignette-0004', 0);
         }
     });
 
@@ -6447,6 +8729,1426 @@ UK.PREVIEW = UK.PREVIEW || {};
 })();
 
 
+// ---- src/presets/77_design.jsx
+// =============================================================================
+//  Дизайн (графика) — shape-элементы: плашки, линии, рамки, бейджи, фоны, callout'ы
+// =============================================================================
+(function () {
+
+    // ------------------------------------------------------------ хелперы UK.D
+    var D = UK.D = {
+        PAL: {
+            accent: [1, 0.478, 0.102, 1],      // #FF7A1A
+            white:  [1, 1, 1, 1],
+            dark:   [0.067, 0.075, 0.094, 1]   // #111318
+        },
+
+        /** Интервал существования графики: по выделенному слою или от курсора. */
+        span: function (c) {
+            var comp = c.comp, L = c.layer, tIn, tOut;
+            if (L) { tIn = L.inPoint; tOut = L.outPoint; }
+            else { tIn = comp.time; tOut = Math.min(comp.duration, tIn + Math.max(3, 4 * c.dur)); }
+            if (L && c.opts.startMode === 'playhead' && comp.time > tIn && comp.time < tOut) tIn = comp.time;
+            if (tOut - tIn < comp.frameDuration * 4) tOut = Math.min(comp.duration, tIn + Math.max(3, 4 * c.dur));
+            var d = Math.min(c.dur, (tOut - tIn) / 2.5);
+            return { tIn: tIn, tOut: tOut, dur: tOut - tIn, d: d, dOut: d * 0.8, hasOut: (tOut - tIn) > 2.2 * d };
+        },
+
+        /** Новый shape-слой. below=true — под выделенным слоем. */
+        layer: function (c, name, sp, below) {
+            var s = c.comp.layers.addShape();
+            s.name = UK.PREFIX + name;
+            s.inPoint = sp.tIn;
+            s.outPoint = sp.tOut;
+            if (c.layer) { if (below) s.moveAfter(c.layer); else s.moveBefore(c.layer); }
+            s.label = 9; // green
+            UK.motionBlur(s, c.comp);
+            return s;
+        },
+        /** Контекст для UK.applyEaseExpr со слоем-графикой (слайдеры лягут на него). */
+        ctx: function (c, layer) { return { strength: c.strength, opts: c.opts, layer: layer, comp: c.comp }; },
+
+        /** Группа: { g, cont (contents), tr (transform) } */
+        group: function (layer, name) {
+            var g = layer.property('ADBE Root Vectors Group').addProperty('ADBE Vector Group');
+            if (name) g.name = name;
+            return { g: g, cont: g.property('ADBE Vectors Group'), tr: g.property('ADBE Vector Transform Group') };
+        },
+        rect: function (cont, w, h, pos, round) {
+            var r = cont.addProperty('ADBE Vector Shape - Rect');
+            UK.set(r, 'ADBE Vector Rect Size', [w, h]);
+            UK.set(r, 'ADBE Vector Rect Position', pos || [0, 0]);
+            if (round != null) UK.set(r, 'ADBE Vector Rect Roundness', round);
+            return r;
+        },
+        ellipse: function (cont, w, h, pos) {
+            var e = cont.addProperty('ADBE Vector Shape - Ellipse');
+            UK.set(e, 'ADBE Vector Ellipse Size', [w, h]);
+            UK.set(e, 'ADBE Vector Ellipse Position', pos || [0, 0]);
+            return e;
+        },
+        star: function (cont, o) {
+            var s = cont.addProperty('ADBE Vector Shape - Star');
+            UK.set(s, 'ADBE Vector Star Type', o.polygon ? 2 : 1);
+            UK.set(s, 'ADBE Vector Star Points', o.points || 5);
+            UK.set(s, 'ADBE Vector Star Outer Radius', o.outer || 100);
+            if (!o.polygon) UK.set(s, 'ADBE Vector Star Inner Radius', o.inner || 50);
+            UK.set(s, 'ADBE Vector Star Rotation', o.rotation || 0);
+            UK.set(s, 'ADBE Vector Star Position', o.pos || [0, 0]);
+            return s;
+        },
+        /** Произвольный путь. verts [[x,y]] и т.д., inT/outT — тангенты (или null), closed. */
+        path: function (cont, verts, inT, outT, closed) {
+            var p = cont.addProperty('ADBE Vector Shape - Group');
+            var sh = new Shape();
+            sh.vertices = verts;
+            var z = [], i;
+            for (i = 0; i < verts.length; i++) z.push([0, 0]);
+            sh.inTangents = inT || z;
+            sh.outTangents = outT || z;
+            sh.closed = !!closed;
+            UK.set(p, 'ADBE Vector Shape', sh);
+            return p;
+        },
+        /** Цвет: {val, expr}. С контролами — Color Control на слое. */
+        col: function (c, layer, name, def) {
+            var r = { val: def, expr: null };
+            if (c.opts.controls) {
+                UK.color(layer, name, def);
+                r.expr = UK.ref(name, 'color');
+            }
+            return r;
+        },
+        setCol: function (prop, col) {
+            if (!prop) return;
+            try { prop.setValue(col.val); } catch (e) {}
+            if (col.expr) { try { prop.expression = col.expr; } catch (e2) {} }
+        },
+        fill: function (cont, col, opacity) {
+            var f = cont.addProperty('ADBE Vector Graphic - Fill');
+            D.setCol(UK.findProp(f, 'ADBE Vector Fill Color'), col);
+            if (opacity != null) UK.set(f, 'ADBE Vector Fill Opacity', opacity);
+            return f;
+        },
+        stroke: function (cont, col, width, cap, join) {
+            var s = cont.addProperty('ADBE Vector Graphic - Stroke');
+            D.setCol(UK.findProp(s, 'ADBE Vector Stroke Color'), col);
+            UK.set(s, 'ADBE Vector Stroke Width', width || 4);
+            UK.set(s, 'ADBE Vector Stroke Line Cap', cap || 2);
+            UK.set(s, 'ADBE Vector Stroke Line Join', join || 2);
+            return s;
+        },
+        /** Пунктир (может быть недоступен в моке — тихо). */
+        dashes: function (stroke, dash, gap) {
+            try {
+                var dg = stroke.property('ADBE Vector Stroke Dashes');
+                var d1 = dg.addProperty('ADBE Vector Stroke Dash 1');
+                d1.setValue(dash);
+                var g1 = dg.addProperty('ADBE Vector Stroke Gap 1');
+                g1.setValue(gap);
+            } catch (e) {}
+        },
+        gfill: function (cont, start, end, radial) {
+            var g = cont.addProperty('ADBE Vector Graphic - G-Fill');
+            UK.set(g, 'ADBE Vector Grad Type', radial ? 2 : 1);
+            UK.set(g, 'ADBE Vector Grad Start Pt', start);
+            UK.set(g, 'ADBE Vector Grad End Pt', end);
+            return g;
+        },
+        trim: function (cont, start, end, offset) {
+            var t = cont.addProperty('ADBE Vector Filter - Trim');
+            if (start != null) UK.set(t, 'ADBE Vector Trim Start', start);
+            if (end != null) UK.set(t, 'ADBE Vector Trim End', end);
+            if (offset != null) UK.set(t, 'ADBE Vector Trim Offset', offset);
+            return t;
+        },
+        repeater: function (cont, copies, pos, rot, scale, op1, op2) {
+            var r = cont.addProperty('ADBE Vector Filter - Repeater');
+            UK.set(r, 'ADBE Vector Repeater Copies', copies);
+            var tr = null;
+            try { tr = r.property('ADBE Vector Repeater Transform'); } catch (e) {}
+            if (tr) {
+                if (pos) UK.set(tr, 'ADBE Vector Repeater Position', pos);
+                if (rot != null) UK.set(tr, 'ADBE Vector Repeater Rotation', rot);
+                if (scale) UK.set(tr, 'ADBE Vector Repeater Scale', scale);
+                if (op1 != null) UK.set(tr, ['ADBE Vector Repeater Opacity 1', 'Start Opacity'], op1);
+                if (op2 != null) UK.set(tr, ['ADBE Vector Repeater Opacity 2', 'End Opacity'], op2);
+            }
+            return r;
+        },
+        roundCorners: function (cont, radius) {
+            var r = cont.addProperty('ADBE Vector Filter - RC');
+            UK.set(r, 'ADBE Vector RoundCorner Radius', radius);
+            return r;
+        },
+        offsetPath: function (cont, amount) {
+            var o = cont.addProperty('ADBE Vector Filter - Offset');
+            UK.set(o, 'ADBE Vector Offset Amount', amount);
+            return o;
+        },
+        wiggle: function (cont, size, detail, freq) {
+            var w = cont.addProperty('ADBE Vector Filter - Roughen');
+            UK.set(w, 'ADBE Vector Roughen Size', size);
+            UK.set(w, 'ADBE Vector Roughen Detail', detail);
+            UK.set(w, 'ADBE Vector Temporal Freq', freq);
+            return w;
+        },
+
+        /** Прямоугольник слоя в координатах композиции: {cx, cy, w, h}. */
+        rectOf: function (layer, t) {
+            var r, a = [0, 0], p = [0, 0], sc = [100, 100];
+            try { r = layer.sourceRectAtTime(t, false); } catch (e) { r = { left: -50, top: -50, width: 100, height: 100 }; }
+            try { a = layer.transform.anchorPoint.value; p = layer.transform.position.value; sc = layer.transform.scale.value; } catch (e2) {}
+            return {
+                cx: p[0] + (r.left + r.width / 2 - a[0]) * sc[0] / 100,
+                cy: p[1] + (r.top + r.height / 2 - a[1]) * sc[1] / 100,
+                w: Math.abs(r.width * sc[0] / 100), h: Math.abs(r.height * sc[1] / 100)
+            };
+        },
+        /** Поставить слой-графику в точку и, если есть целевой слой, припарентить. */
+        place: function (c, s, pt, parentTo) {
+            s.transform.position.setValue(pt);
+            if (parentTo && c.layer) { try { s.setParentWithJump(c.layer); } catch (e) {} }
+        },
+
+        // ---- анимации
+        /** Появление + (если есть место) уход для свойства. vIn → vShow → vOut */
+        inOut: function (c, prop, vIn, vShow, vOut, sp, easeExpr, layer) {
+            UK.key2(prop, sp.tIn, vIn, sp.tIn + sp.d, vShow, c.ease);
+            if (easeExpr) UK.applyEaseExpr(prop, c.ease, D.ctx(c, layer));
+            if (sp.hasOut && vOut != null) UK.key2(prop, sp.tOut - sp.dOut, vShow, sp.tOut, vOut, c.ease, true);
+        },
+        /** Trim End 0→100 (рисование) и обратно через Trim Start. */
+        draw: function (c, trim, sp, fromEnd) {
+            var end = UK.findProp(trim, 'ADBE Vector Trim End'), start = UK.findProp(trim, 'ADBE Vector Trim Start');
+            if (fromEnd) {
+                UK.key2(start, sp.tIn, 100, sp.tIn + sp.d, 0, c.ease);
+                if (sp.hasOut) UK.key2(end, sp.tOut - sp.dOut, 100, sp.tOut, 0, c.ease, true);
+            } else {
+                UK.key2(end, sp.tIn, 0, sp.tIn + sp.d, 100, c.ease);
+                if (sp.hasOut) UK.key2(start, sp.tOut - sp.dOut, 0, sp.tOut, 100, c.ease, true);
+            }
+        },
+        /** Масштаб группы: от оси (X / Y / обе). */
+        scaleIn: function (c, tr, axis, sp, layer) {
+            var sc = UK.findProp(tr, 'ADBE Vector Scale');
+            var vIn = axis === 'x' ? [0, 100] : (axis === 'y' ? [100, 0] : [0, 0]);
+            D.inOut(c, sc, vIn, [100, 100], vIn, sp, true, layer);
+        },
+        fadeIn: function (c, prop, sp, show) {
+            D.inOut(c, prop, 0, show == null ? 100 : show, 0, sp, false);
+        },
+        slideIn: function (c, tr, dist, sp, layer) {
+            var pos = UK.findProp(tr, 'ADBE Vector Position');
+            var off = UK.vecMul(c.dirV, dist);
+            D.inOut(c, pos, off, [0, 0], off, sp, true, layer);
+        },
+        /** Слайдер (контрол или константа) — удобная обёртка UK.cv на слое-графике. */
+        cv: function (c, layer, name, val) { return UK.cv({ opts: c.opts, layer: layer }, name, val); },
+        /** Точка на краю композиции по направлению, с отступом. */
+        edgePoint: function (comp, dirV, margin) {
+            var cx = comp.width / 2, cy = comp.height / 2;
+            return [cx + dirV[0] * (comp.width / 2 - margin), cy + dirV[1] * (comp.height / 2 - margin)];
+        },
+        add: function (p) { if (!p.needs) p.needs = 'none'; p.cat = 'design'; UK.add(p); }
+    };
+
+    // ============================================================ ПЛАШКИ / ТИТРЫ
+    D.add({
+        id: 'design.lowerThirdBar', name: 'Lower Third Bar · Титр-плашка',
+        desc: 'Тёмная плашка с акцентной полоской внизу слева: полоска вырастает, плашка раскрывается по ширине. Цвета и скругление — контролы.',
+        tags: 'lower third плашка титр bar нижняя треть', preview: 'bar',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Lower Third', sp, true);
+            var w = Math.round(comp.width * 0.3), h = Math.round(comp.height * 0.085);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), dark = D.col(c, s, 'Color 2', D.PAL.dark);
+            var round = D.cv(c, s, 'Roundness', 6);
+            var side = c.dirId === 'R' ? 1 : -1; // справа только при «→», иначе слева
+            var x = side < 0 ? comp.width * 0.08 : comp.width * 0.92;
+            var y = comp.height * 0.8;
+            D.place(c, s, [x, y], false);
+            // плашка (раскрывается от стороны)
+            var bar = D.group(s, 'Bar');
+            var r = D.rect(bar.cont, w, h, [side * (w / 2 + 14), 0], 6);
+            UK.expr(r, 'ADBE Vector Rect Roundness', round);
+            D.fill(bar.cont, dark, 92);
+            D.scaleIn(c, bar.tr, 'x', sp, s);
+            // акцентная полоска (растёт по высоте)
+            var ac = D.group(s, 'Accent');
+            D.rect(ac.cont, 10, h, [side * 5, 0], 3);
+            D.fill(ac.cont, acc);
+            D.scaleIn(c, ac.tr, 'y', sp, s);
+        }
+    });
+
+    D.add({
+        id: 'design.lowerThirdLine', name: 'Lower Third Line · Минимальный титр',
+        desc: 'Тонкая акцентная линия рисуется слева направо, под ней полупрозрачная подложка проявляется. Минималистичный титр.',
+        tags: 'lower third line минимал титр линия', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Lower Third Line', sp, true);
+            var w = Math.round(comp.width * 0.26);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), dark = D.col(c, s, 'Color 2', D.PAL.dark);
+            D.place(c, s, [comp.width * 0.08, comp.height * 0.78], false);
+            var back = D.group(s, 'Backing');
+            D.rect(back.cont, w, comp.height * 0.1, [w / 2, comp.height * 0.05 + 8], 4);
+            D.fill(back.cont, dark, 55);
+            D.fadeIn(c, UK.findProp(back.tr, 'ADBE Vector Group Opacity'), sp, 100);
+            var ln = D.group(s, 'Line');
+            D.path(ln.cont, [[0, 0], [w, 0]]);
+            D.stroke(ln.cont, acc, 5, 1);
+            var tr = D.trim(ln.cont, 0, 100, 0);
+            D.draw(c, tr, sp, false);
+        }
+    });
+
+    D.add({
+        id: 'design.titleUnderline', name: 'Title Underline · Подчёркивание', needs: 'layer',
+        desc: 'Линия под выделенным слоем (текстом) рисуется по ширине его содержимого, следует за слоем. Толщина и цвет — контролы.',
+        tags: 'underline подчёркивание линия текст title', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), s = D.layer(c, 'Underline', sp, true);
+            var R = D.rectOf(c.layer, sp.tIn + sp.d);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent);
+            var thick = D.cv(c, s, 'Thickness', Math.max(3, Math.round(R.h * 0.08)));
+            D.place(c, s, [R.cx, R.cy + R.h / 2 + Math.max(10, R.h * 0.18)], true);
+            var g = D.group(s, 'Line');
+            var fromRight = c.dirId === 'R';
+            D.path(g.cont, fromRight ? [[R.w / 2, 0], [-R.w / 2, 0]] : [[-R.w / 2, 0], [R.w / 2, 0]]);
+            var st = D.stroke(g.cont, acc, 6, 1);
+            UK.expr(st, 'ADBE Vector Stroke Width', thick);
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+        }
+    });
+
+    D.add({
+        id: 'design.textBacking', name: 'Text Box Backing · Подложка под текст', needs: 'layer',
+        desc: 'Скруглённая плашка за слоем с отступами по его размеру; раскрывается по ширине с перелётом. Скругление, отступ и цвет — контролы.',
+        tags: 'backing box плашка подложка текст rect', preview: 'bar',
+        apply: function (c) {
+            var sp = D.span(c), s = D.layer(c, 'Backing', sp, true);
+            var R = D.rectOf(c.layer, sp.tIn + sp.d);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var pad = Math.round(Math.max(R.h * 0.35, 18));
+            var round = D.cv(c, s, 'Roundness', Math.round(R.h * 0.25));
+            D.place(c, s, [R.cx, R.cy], true);
+            var g = D.group(s, 'Box');
+            var r = D.rect(g.cont, R.w + pad * 2, R.h + pad * 1.2, [0, 0], 12);
+            UK.expr(r, 'ADBE Vector Rect Roundness', round);
+            D.fill(g.cont, col);
+            D.scaleIn(c, g.tr, 'x', sp, s);
+        }
+    });
+
+    D.add({
+        id: 'design.highlightMarker', name: 'Highlight Marker · Маркер за текстом', needs: 'layer',
+        desc: 'Маркерная заливка за текстом с лёгким наклоном, закрашивается слева направо как фломастером.',
+        tags: 'highlight marker маркер выделение текст', preview: 'wipe',
+        apply: function (c) {
+            var sp = D.span(c), s = D.layer(c, 'Marker', sp, true);
+            var R = D.rectOf(c.layer, sp.tIn + sp.d);
+            var col = D.col(c, s, 'Color 1', [1, 0.86, 0.2, 1]);
+            D.place(c, s, [R.cx, R.cy + R.h * 0.12], true);
+            var g = D.group(s, 'Marker');
+            var w = R.w + 24, h = R.h * 0.62;
+            var dir = c.dirId === 'R' ? -1 : 1;
+            D.rect(g.cont, w, h, [dir * w / 2, 0], 4);
+            D.fill(g.cont, col, 85);
+            UK.set(g.tr, 'ADBE Vector Position', [-dir * w / 2, 0]);
+            UK.set(g.tr, 'ADBE Vector Rotation', -1.2);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn, [0, 100], sp.tIn + sp.d, [100, 100], 'expoInOut');
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [100, 0], c.ease, true);
+            s.blendingMode = BlendingMode.MULTIPLY;
+        }
+    });
+
+    D.add({
+        id: 'design.pillTag', name: 'Pill Tag · Тег-капсула',
+        desc: 'Капсула-тег влетает по направлению с перелётом и уходит обратно. Для подписей, хештегов, категорий.',
+        tags: 'pill tag капсула хештег badge label', preview: 'slideIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Pill Tag', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var w = comp.width * 0.16, h = comp.height * 0.07;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy - R.h / 2 - h]; })() : [comp.width * 0.18, comp.height * 0.2];
+            D.place(c, s, pt, !!c.layer);
+            var g = D.group(s, 'Pill');
+            D.rect(g.cont, w, h, [0, 0], h / 2);
+            D.fill(g.cont, col);
+            D.slideIn(c, g.tr, Math.max(comp.width, comp.height) * 0.25 * c.strength, sp, s);
+            D.fadeIn(c, UK.findProp(g.tr, 'ADBE Vector Group Opacity'), sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.ribbonBanner', name: 'Ribbon Banner · Лента',
+        desc: 'Лента-баннер с уголками по бокам: раскрывается по ширине, хвосты выезжают следом.',
+        tags: 'ribbon banner лента баннер', preview: 'bar',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Ribbon', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), dark = D.col(c, s, 'Color 2', [0.75, 0.3, 0.05, 1]);
+            var w = comp.width * 0.34, h = comp.height * 0.09, t = h * 0.75;
+            D.place(c, s, [comp.width / 2, comp.height * 0.22], false);
+            var tails = D.group(s, 'Tails');
+            D.path(tails.cont, [[-w / 2 - t, -h / 2 + h * 0.2], [-w / 2 + 2, -h / 2 + h * 0.2], [-w / 2 + 2, h / 2 + h * 0.2], [-w / 2 - t, h / 2 + h * 0.2], [-w / 2 - t * 0.55, h * 0.2]], null, null, true);
+            D.path(tails.cont, [[w / 2 + t, -h / 2 + h * 0.2], [w / 2 - 2, -h / 2 + h * 0.2], [w / 2 - 2, h / 2 + h * 0.2], [w / 2 + t, h / 2 + h * 0.2], [w / 2 + t * 0.55, h * 0.2]], null, null, true);
+            D.fill(tails.cont, dark);
+            D.scaleIn(c, tails.tr, 'x', sp, s);
+            var main = D.group(s, 'Ribbon');
+            D.rect(main.cont, w, h, [0, 0], 0);
+            D.fill(main.cont, acc);
+            D.scaleIn(c, main.tr, 'x', sp, s);
+        }
+    });
+
+    // ============================================================ РАМКИ
+    D.add({
+        id: 'design.frameBorder', name: 'Frame Border · Рамка по кадру',
+        desc: 'Обводка по периметру композиции рисуется по часовой стрелке (trim). Отступ, толщина и цвет — контролы.',
+        tags: 'frame border рамка обводка кадр', preview: 'frame',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Frame', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var m = Math.round(comp.height * 0.05), hw = comp.width / 2 - m, hh = comp.height / 2 - m;
+            var thick = D.cv(c, s, 'Thickness', Math.max(4, Math.round(comp.height * 0.008)));
+            var g = D.group(s, 'Border');
+            D.path(g.cont, [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]], null, null, true);
+            var st = D.stroke(g.cont, col, 8, 1, 1);
+            UK.expr(st, 'ADBE Vector Stroke Width', thick);
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+        }
+    });
+
+    D.add({
+        id: 'design.frameCorners', name: 'Frame Corners · Уголки кадра',
+        desc: 'Четыре уголка-скобки по углам композиции: съезжаются из-за краёв и дорисовываются. Как видоискатель/HUD.',
+        tags: 'corners уголки рамка hud viewfinder', preview: 'frame',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Corners', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var m = comp.height * 0.06, L = comp.height * 0.08, hw = comp.width / 2 - m, hh = comp.height / 2 - m;
+            var thick = D.cv(c, s, 'Thickness', Math.max(4, Math.round(comp.height * 0.007)));
+            var corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+            for (var i = 0; i < 4; i++) {
+                var sx = corners[i][0], sy = corners[i][1];
+                var g = D.group(s, 'Corner ' + (i + 1));
+                D.path(g.cont, [[sx * hw, sy * (hh - L)], [sx * hw, sy * hh], [sx * (hw - L), sy * hh]]);
+                var st = D.stroke(g.cont, col, 6, 1, 1);
+                UK.expr(st, 'ADBE Vector Stroke Width', thick);
+                D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+                var pos = UK.findProp(g.tr, 'ADBE Vector Position');
+                var off = [sx * 60 * c.strength, sy * 60 * c.strength];
+                D.inOut(c, pos, off, [0, 0], off, sp, true, s);
+            }
+        }
+    });
+
+    D.add({
+        id: 'design.roundedFrame', name: 'Rounded Frame · Скруглённая рамка',
+        desc: 'Толстая скруглённая рамка-обводка с небольшим отступом внутрь кадра, мягко проявляется с масштаба 104 %.',
+        tags: 'rounded frame рамка скруглённая', preview: 'frame',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Rounded Frame', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var m = comp.height * 0.04;
+            var thick = D.cv(c, s, 'Thickness', Math.round(comp.height * 0.02));
+            var round = D.cv(c, s, 'Roundness', Math.round(comp.height * 0.04));
+            var g = D.group(s, 'Frame');
+            var r = D.rect(g.cont, comp.width - m * 2, comp.height - m * 2, [0, 0], 40);
+            UK.expr(r, 'ADBE Vector Rect Roundness', round);
+            var st = D.stroke(g.cont, col, 20, 1, 2);
+            UK.expr(st, 'ADBE Vector Stroke Width', thick);
+            D.inOut(c, UK.findProp(g.tr, 'ADBE Vector Scale'), [104, 104], [100, 100], [104, 104], sp, false);
+            D.fadeIn(c, UK.findProp(g.tr, 'ADBE Vector Group Opacity'), sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.brackets', name: 'Brackets · Скобки вокруг слоя', needs: 'layer',
+        desc: 'Две квадратные скобки по бокам выделенного слоя: съезжаются снаружи и проявляются, следуют за слоем.',
+        tags: 'brackets скобки рамка текст', preview: 'frame',
+        apply: function (c) {
+            var sp = D.span(c), s = D.layer(c, 'Brackets', sp, false);
+            var R = D.rectOf(c.layer, sp.tIn + sp.d);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var thick = D.cv(c, s, 'Thickness', Math.max(3, Math.round(R.h * 0.06)));
+            var pad = Math.max(16, R.h * 0.3), hw = R.w / 2 + pad, hh = R.h / 2 + pad * 0.6, L = Math.max(12, R.h * 0.25);
+            D.place(c, s, [R.cx, R.cy], true);
+            var sides = [-1, 1];
+            for (var i = 0; i < 2; i++) {
+                var sx = sides[i];
+                var g = D.group(s, sx < 0 ? 'Left' : 'Right');
+                D.path(g.cont, [[sx * (hw - L), -hh], [sx * hw, -hh], [sx * hw, hh], [sx * (hw - L), hh]]);
+                var st = D.stroke(g.cont, col, 5, 1, 1);
+                UK.expr(st, 'ADBE Vector Stroke Width', thick);
+                var pos = UK.findProp(g.tr, 'ADBE Vector Position');
+                var off = [sx * 80 * c.strength, 0];
+                D.inOut(c, pos, off, [0, 0], off, sp, true, s);
+                D.fadeIn(c, UK.findProp(g.tr, 'ADBE Vector Group Opacity'), sp, 100);
+            }
+        }
+    });
+
+    D.add({
+        id: 'design.recFrame', name: 'REC Frame · Рамка записи',
+        desc: 'Уголки видоискателя + мигающая красная точка и плашка REC в углу. Как запись с камеры.',
+        tags: 'rec recording камера видоискатель hud frame', preview: 'frame',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'REC Frame', sp, false);
+            var white = D.col(c, s, 'Color 1', D.PAL.white), red = D.col(c, s, 'Color 2', [0.95, 0.15, 0.15, 1]);
+            var m = comp.height * 0.07, L = comp.height * 0.07, hw = comp.width / 2 - m, hh = comp.height / 2 - m;
+            var corners = [[-1, -1], [1, -1], [1, 1], [-1, 1]];
+            for (var i = 0; i < 4; i++) {
+                var sx = corners[i][0], sy = corners[i][1];
+                var g = D.group(s, 'Corner ' + (i + 1));
+                D.path(g.cont, [[sx * hw, sy * (hh - L)], [sx * hw, sy * hh], [sx * (hw - L), sy * hh]]);
+                D.stroke(g.cont, white, Math.max(4, comp.height * 0.006), 1, 1);
+                D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+            }
+            var dot = D.group(s, 'REC dot');
+            var dr = comp.height * 0.014;
+            D.ellipse(dot.cont, dr * 2, dr * 2, [-hw + L + dr, -hh + L * 0.5]);
+            D.fill(dot.cont, red);
+            UK.expr(dot.tr, 'ADBE Vector Group Opacity', 'Math.floor((time - inPoint) * 2) % 2 == 0 ? 100 : 15');
+            var bar = D.group(s, 'REC bar');
+            D.rect(bar.cont, comp.height * 0.07, comp.height * 0.03, [-hw + L + dr * 2 + comp.height * 0.05, -hh + L * 0.5], 4);
+            D.fill(bar.cont, white, 85);
+            D.fadeIn(c, UK.findProp(bar.tr, 'ADBE Vector Group Opacity'), sp, 85);
+        }
+    });
+
+    // ============================================================ СПЛИТЫ / ФОНЫ
+    function splitScreen(n) {
+        return function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Split ' + n, sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var thick = D.cv(c, s, 'Thickness', Math.max(4, Math.round(comp.height * 0.008)));
+            var vertical = !(c.dirId === 'U' || c.dirId === 'D');
+            for (var i = 1; i < n; i++) {
+                var g = D.group(s, 'Divider ' + i);
+                if (vertical) {
+                    var x = -comp.width / 2 + comp.width * i / n;
+                    D.path(g.cont, [[x, 0], [x, -comp.height / 2]]);
+                    D.path(g.cont, [[x, 0], [x, comp.height / 2]]);
+                } else {
+                    var y = -comp.height / 2 + comp.height * i / n;
+                    D.path(g.cont, [[0, y], [-comp.width / 2, y]]);
+                    D.path(g.cont, [[0, y], [comp.width / 2, y]]);
+                }
+                var st = D.stroke(g.cont, col, 8, 1, 1);
+                UK.expr(st, 'ADBE Vector Stroke Width', thick);
+                D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+            }
+        };
+    }
+    D.add({ id: 'design.split2', name: 'Split Screen 2 · Разделитель ×2', desc: 'Линия-разделитель пополам расходится из центра. Направление ↑/↓ — горизонтальный сплит.', tags: 'split screen сплит разделитель 2', preview: 'grid', apply: splitScreen(2) });
+    D.add({ id: 'design.split3', name: 'Split Screen 3 · Разделитель ×3', desc: 'Две линии делят кадр на три части, рисуются из центра.', tags: 'split screen сплит разделитель 3', preview: 'grid', apply: splitScreen(3) });
+    D.add({ id: 'design.split4', name: 'Split Screen 4 · Разделитель ×4', desc: 'Три линии делят кадр на четыре части, рисуются из центра.', tags: 'split screen сплит разделитель 4', preview: 'grid', apply: splitScreen(4) });
+
+    D.add({
+        id: 'design.dotsGrid', name: 'Dots Grid · Сетка точек',
+        desc: 'Фоновая сетка точек через два репитера, плавно проявляется и медленно дрейфует. Размер/шаг — контролы.',
+        tags: 'dots grid сетка точки фон background pattern', preview: 'grid',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Dots Grid', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var step = comp.width / 16, nx = 18, ny = Math.ceil(comp.height / step) + 2;
+            var g = D.group(s, 'Dots');
+            var e = D.ellipse(g.cont, 6, 6, [0, 0]);
+            UK.expr(e, 'ADBE Vector Ellipse Size', '[1,1] * ' + D.cv(c, s, 'Dot Size', 6));
+            D.fill(g.cont, col, 35);
+            D.repeater(g.cont, nx, [step, 0], 0, [100, 100], 100, 100);
+            D.repeater(g.cont, ny, [0, step], 0, [100, 100], 100, 100);
+            UK.set(g.tr, 'ADBE Vector Position', [-step * (nx - 1) / 2, -step * (ny - 1) / 2]);
+            UK.expr(g.tr, 'ADBE Vector Position', 'value + [Math.sin(time * 0.4) * 10, Math.cos(time * 0.3) * 10]');
+            D.fadeIn(c, s.transform.opacity, sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.stripesBg', name: 'Stripes Background · Полосы',
+        desc: 'Диагональные полосы движутся бесконечно (выражение), проявляются по прозрачности. Скорость и толщина — контролы.',
+        tags: 'stripes полосы фон background diagonal', preview: 'grid',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Stripes', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var period = comp.width / 12, n = 40, L = Math.max(comp.width, comp.height) * 2.2;
+            var speed = D.cv(c, s, 'Speed', 60);
+            var g = D.group(s, 'Stripes');
+            var r = D.rect(g.cont, period * 0.45, L, [0, 0], 0);
+            UK.expr(r, 'ADBE Vector Rect Size', '[' + D.cv(c, s, 'Stripe Width', Math.round(period * 0.45)) + ', ' + Math.round(L) + ']');
+            D.fill(g.cont, col, 18);
+            D.repeater(g.cont, n, [period, 0], 0, [100, 100], 100, 100);
+            UK.set(g.tr, 'ADBE Vector Rotation', 35);
+            UK.set(g.tr, 'ADBE Vector Position', [-period * n / 2, 0]);
+            UK.expr(g.tr, 'ADBE Vector Position', 'var p = ' + period + '; var sh = ((time - inPoint) * ' + speed + ') % p; value + [sh * Math.cos(degreesToRadians(35)), sh * Math.sin(degreesToRadians(35))]');
+            D.fadeIn(c, s.transform.opacity, sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.gradientBg', name: 'Gradient Background · Градиент',
+        desc: 'Фон с радиальным градиентом (Gradient Fill) на весь кадр, мягко проявляется. Цвета градиента правятся в Gradient Fill.',
+        tags: 'gradient градиент фон background', preview: 'fadeIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Gradient BG', sp, true);
+            var g = D.group(s, 'Gradient');
+            D.rect(g.cont, comp.width, comp.height, [0, 0], 0);
+            D.gfill(g.cont, [0, 0], [comp.width * 0.6, comp.height * 0.6], true);
+            UK.expr(g.tr, 'ADBE Vector Scale', 'value + [1,1] * Math.sin(time * 0.5) * 3');
+            D.fadeIn(c, s.transform.opacity, sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.animatedGrid', name: 'Animated Grid · Сетка линий',
+        desc: 'Линии сетки рисуются по горизонтали и вертикали (trim), уходят обратно. Фон для tech/UI-стилистики.',
+        tags: 'grid сетка линии tech фон', preview: 'grid',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Grid', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var step = comp.height / 8, nx = Math.ceil(comp.width / step) + 1, ny = 9;
+            var h = D.group(s, 'Horizontal');
+            D.path(h.cont, [[-comp.width / 2, 0], [comp.width / 2, 0]]);
+            D.stroke(h.cont, col, 2, 1);
+            D.trim(h.cont, 0, 100, 0);
+            D.draw(c, UK.findProp(h.cont, 'ADBE Vector Filter - Trim'), sp, false);
+            D.repeater(h.cont, ny, [0, step], 0, [100, 100], 100, 100);
+            UK.set(h.tr, 'ADBE Vector Position', [0, -step * (ny - 1) / 2]);
+            var v = D.group(s, 'Vertical');
+            D.path(v.cont, [[0, -comp.height / 2], [0, comp.height / 2]]);
+            D.stroke(v.cont, col, 2, 1);
+            D.draw(c, D.trim(v.cont, 0, 100, 0), sp, false);
+            D.repeater(v.cont, nx, [step, 0], 0, [100, 100], 100, 100);
+            UK.set(v.tr, 'ADBE Vector Position', [-step * (nx - 1) / 2, 0]);
+            s.transform.opacity.setValue(30);
+        }
+    });
+
+    D.add({
+        id: 'design.geoPattern', name: 'Geometric Pattern · Квадраты',
+        desc: 'Сетка квадратов с поворотом и масштабом вырастает с перелётом, затем сжимается. Фон или reveal-подложка.',
+        tags: 'pattern geometric squares квадраты фон reveal', preview: 'grid',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Geo Pattern', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var step = comp.height / 6, nx = Math.ceil(comp.width / step) + 2, ny = 8;
+            var g = D.group(s, 'Cells');
+            D.rect(g.cont, step * 0.82, step * 0.82, [0, 0], 8);
+            D.fill(g.cont, col, 70);
+            D.repeater(g.cont, nx, [step, 0], 0, [100, 100], 100, 100);
+            D.repeater(g.cont, ny, [0, step], 0, [100, 100], 100, 100);
+            UK.set(g.tr, 'ADBE Vector Position', [-step * (nx - 1) / 2, -step * (ny - 1) / 2]);
+            UK.set(g.tr, 'ADBE Vector Anchor', [0, 0]);
+            // масштаб и поворот всего поля
+            var sc = s.transform.scale, rot = s.transform.rotation;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], c.ease);
+            UK.applyEaseExpr(sc, c.ease, D.ctx(c, s));
+            UK.key2(rot, sp.tIn, 45 * c.strength, sp.tIn + sp.d, 0, c.ease);
+            if (sp.hasOut) { UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true); UK.key2(rot, sp.tOut - sp.dOut, 0, sp.tOut, -45 * c.strength, c.ease, true); }
+        }
+    });
+
+    D.add({
+        id: 'design.softBlob', name: 'Soft Blob · Мягкое пятно',
+        desc: 'Органичное пятно (эллипс + Wiggle Paths + свечение) медленно живёт и вращается, проявляется из нуля. Фоновый акцент.',
+        tags: 'blob пятно органика фон glow liquid', preview: 'liquid',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Blob', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var g = D.group(s, 'Blob');
+            D.ellipse(g.cont, comp.height * 0.55, comp.height * 0.45, [0, 0]);
+            D.fill(g.cont, col, 80);
+            D.wiggle(g.cont, 60 * c.strength, 4, 0.4);
+            UK.expr(g.tr, 'ADBE Vector Rotation', 'time * 8');
+            var glow = UK.addFx(s, 'ADBE Glo2', 'Blob Glow');
+            UK.set(glow, 'ADBE Glo2-0002', 30); UK.set(glow, 'ADBE Glo2-0003', 120); UK.set(glow, 'ADBE Glo2-0004', 0.8);
+            var sc = s.transform.scale;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], c.ease);
+            UK.applyEaseExpr(sc, c.ease, D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.letterboxShapes', name: 'Letterbox Bars · Кинополосы',
+        desc: 'Две чёрные плашки выезжают сверху и снизу (кинематографические полосы), высота — контрол.',
+        tags: 'letterbox cinematic bars полосы кино', preview: 'letterbox',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Letterbox', sp, false);
+            var col = D.col(c, s, 'Color 1', [0, 0, 0, 1]);
+            var hExpr = D.cv(c, s, 'Bar Height', Math.round(comp.height * 0.12));
+            var sides = [-1, 1];
+            for (var i = 0; i < 2; i++) {
+                var sy = sides[i];
+                var g = D.group(s, sy < 0 ? 'Top' : 'Bottom');
+                var r = D.rect(g.cont, comp.width + 4, comp.height * 0.12, [0, sy * (comp.height / 2 - comp.height * 0.06)], 0);
+                UK.expr(r, 'ADBE Vector Rect Size', '[' + (comp.width + 4) + ', ' + hExpr + ']');
+                UK.expr(r, 'ADBE Vector Rect Position', '[0, ' + sy + ' * (' + (comp.height / 2) + ' - ' + hExpr + ' / 2)]');
+                D.fill(g.cont, col);
+                var pos = UK.findProp(g.tr, 'ADBE Vector Position');
+                var off = [0, sy * comp.height * 0.14];
+                D.inOut(c, pos, off, [0, 0], off, sp, false);
+            }
+        }
+    });
+
+    // ============================================================ ВСПЫШКИ / ЧАСТИЦЫ
+    D.add({
+        id: 'design.circleBurst', name: 'Circle Burst · Кольца',
+        desc: 'Три концентрических кольца расходятся из точки и растворяются. Акцент на появление объекта/клика.',
+        tags: 'burst кольца circle ring pop клик', preview: 'burst',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Circle Burst', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var size = comp.height * 0.5 * c.strength;
+            var g = D.group(s, 'Rings');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            var st = D.stroke(g.cont, col, 10, 1);
+            D.repeater(g.cont, 3, [0, 0], 0, [70, 70], 100, 30);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale'), op = UK.findProp(g.tr, 'ADBE Vector Group Opacity');
+            var d = Math.min(sp.d * 1.6, sp.dur);
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + d, [100, 100], 'expoOut');
+            UK.keys(op, [[sp.tIn, 100], [sp.tIn + d * 0.5, 100], [sp.tIn + d, 0]], 'smooth');
+            var w = UK.findProp(st, 'ADBE Vector Stroke Width');
+            UK.key2(w, sp.tIn, 24, sp.tIn + d, 2, 'expoOut');
+            s.outPoint = Math.min(sp.tOut, sp.tIn + d + c.fd);
+        }
+    });
+
+    D.add({
+        id: 'design.lineBurst', name: 'Line Burst · Лучи',
+        desc: 'Двенадцать коротких лучей вылетают из центра и укорачиваются (trim) — классический cartoon-акцент.',
+        tags: 'burst лучи lines rays cartoon pop', preview: 'burst',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Line Burst', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var r0 = comp.height * 0.12, r1 = comp.height * 0.3 * c.strength;
+            var g = D.group(s, 'Rays');
+            D.path(g.cont, [[0, -r0], [0, -r1]]);
+            D.stroke(g.cont, col, 8, 2);
+            var tr = D.trim(g.cont, 0, 100, 0);
+            D.repeater(g.cont, 12, [0, 0], 30, [100, 100], 100, 100);
+            var d = Math.min(sp.d * 1.3, sp.dur);
+            var end = UK.findProp(tr, 'ADBE Vector Trim End'), start = UK.findProp(tr, 'ADBE Vector Trim Start');
+            UK.key2(end, sp.tIn, 0, sp.tIn + d * 0.55, 100, 'expoOut');
+            UK.key2(start, sp.tIn + d * 0.25, 0, sp.tIn + d, 100, 'expoIn');
+            UK.key2(UK.findProp(g.tr, 'ADBE Vector Scale'), sp.tIn, [60, 60], sp.tIn + d, [120, 120], 'expoOut');
+            s.outPoint = Math.min(sp.tOut, sp.tIn + d + c.fd);
+        }
+    });
+
+    D.add({
+        id: 'design.confettiPop', name: 'Confetti Pop · Конфетти',
+        desc: 'Разлёт конфетти: прямоугольники с репитером и случайным вращением выстреливают из точки и падают.',
+        tags: 'confetti конфетти праздник celebration pop particles', preview: 'burst',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Confetti', sp, false);
+            var c1 = D.col(c, s, 'Color 1', D.PAL.accent), c2 = D.col(c, s, 'Color 2', [0.2, 0.75, 1, 1]), c3 = D.col(c, s, 'Color 3', [1, 0.85, 0.2, 1]);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var cols = [c1, c2, c3], d = Math.min(sp.d * 2, sp.dur);
+            for (var k = 0; k < 3; k++) {
+                var g = D.group(s, 'Confetti ' + (k + 1));
+                D.rect(g.cont, 14, 22, [comp.height * 0.06, 0], 2);
+                D.fill(g.cont, cols[k]);
+                D.repeater(g.cont, 7, [0, 0], 360 / 7, [100, 100], 100, 100);
+                UK.set(g.tr, 'ADBE Vector Rotation', k * 17);
+                // разлёт: масштаб группы + позиция падения
+                var sc = UK.findProp(g.tr, 'ADBE Vector Scale'), pos = UK.findProp(g.tr, 'ADBE Vector Position'), op = UK.findProp(g.tr, 'ADBE Vector Group Opacity');
+                UK.key2(sc, sp.tIn, [10, 10], sp.tIn + d * 0.6, [(260 + k * 60) * c.strength, (260 + k * 60) * c.strength], 'expoOut');
+                UK.key2(pos, sp.tIn, [0, 0], sp.tIn + d, [0, comp.height * 0.25 * (1 + k * 0.3)], 'expoIn');
+                UK.keys(op, [[sp.tIn, 100], [sp.tIn + d * 0.7, 100], [sp.tIn + d, 0]], 'smooth');
+                UK.expr(g.tr, 'ADBE Vector Rotation', 'value + (time - inPoint) * ' + (120 + k * 70) + ' * ' + (k % 2 ? -1 : 1));
+            }
+            s.outPoint = Math.min(sp.tOut, sp.tIn + d + c.fd);
+        }
+    });
+
+    D.add({
+        id: 'design.sparkleStars', name: 'Sparkle Stars · Блёстки',
+        desc: 'Четырёхлучевые звёздочки вспыхивают по очереди вокруг точки/слоя (масштаб с перелётом, вращение).',
+        tags: 'sparkle stars блёстки звёздочки shine', preview: 'burst',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Sparkles', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var R = c.layer ? D.rectOf(c.layer, sp.tIn) : { cx: comp.width / 2, cy: comp.height / 2, w: comp.height * 0.4, h: comp.height * 0.3 };
+            D.place(c, s, [R.cx, R.cy], !!c.layer);
+            var pts = [[-0.55, -0.6], [0.6, -0.45], [0.5, 0.6], [-0.6, 0.5], [0, -0.85]];
+            var d = Math.min(sp.d, sp.dur / 3);
+            for (var i = 0; i < pts.length; i++) {
+                var g = D.group(s, 'Star ' + (i + 1));
+                var r = comp.height * (0.02 + (i % 3) * 0.008) * c.strength;
+                D.star(g.cont, { points: 4, outer: r, inner: r * 0.28, rotation: 0, pos: [0, 0] });
+                D.fill(g.cont, col);
+                UK.set(g.tr, 'ADBE Vector Position', [pts[i][0] * R.w / 2 * 1.3, pts[i][1] * R.h / 2 * 1.3]);
+                var t0 = sp.tIn + d * 0.3 * i, sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+                UK.keys(sc, [[t0, [0, 0]], [t0 + d * 0.5, [130, 130]], [t0 + d * 1.1, [0, 0]]], 'smooth');
+                UK.expr(g.tr, 'ADBE Vector Rotation', '(time - inPoint) * 90');
+            }
+        }
+    });
+
+    // ============================================================ ПРОГРЕСС / ДАННЫЕ
+    D.add({
+        id: 'design.progressBar', name: 'Progress Bar · Полоса прогресса',
+        desc: 'Трек + заполнение, растущее до заданного процента (контрол). Скруглённые концы, текст-процент не нужен.',
+        tags: 'progress bar прогресс загрузка полоса', preview: 'progress',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Progress Bar', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), trackC = D.col(c, s, 'Color 2', [1, 1, 1, 1]);
+            var w = comp.width * 0.4, th = comp.height * 0.022;
+            var pct = D.cv(c, s, 'Percent', 75);
+            D.place(c, s, [comp.width / 2, comp.height / 2], false);
+            var track = D.group(s, 'Track');
+            D.path(track.cont, [[-w / 2, 0], [w / 2, 0]]);
+            D.stroke(track.cont, trackC, th, 2);
+            UK.set(UK.findProp(track.cont, 'ADBE Vector Graphic - Stroke'), 'ADBE Vector Stroke Opacity', 25);
+            var fill = D.group(s, 'Fill');
+            D.path(fill.cont, [[-w / 2, 0], [w / 2, 0]]);
+            D.stroke(fill.cont, acc, th, 2);
+            var tr = D.trim(fill.cont, 0, 0, 0);
+            var end = UK.findProp(tr, 'ADBE Vector Trim End');
+            UK.key2(end, sp.tIn + sp.d * 0.3, 0, sp.tIn + sp.d * 1.8, 75, 'expoOut');
+            UK.expr(tr, 'ADBE Vector Trim End', 'value / 75 * ' + pct);
+            D.scaleIn(c, track.tr, 'x', sp, s);
+            D.fadeIn(c, s.transform.opacity, sp, 100);
+        }
+    });
+
+    D.add({
+        id: 'design.circularProgress', name: 'Circular Progress · Кольцо прогресса',
+        desc: 'Кольцо-трек и дуга, заполняющаяся по часовой до процента (контрол), старт сверху.',
+        tags: 'circular progress кольцо прогресс ring', preview: 'progress',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Circular Progress', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), trackC = D.col(c, s, 'Color 2', [1, 1, 1, 1]);
+            var size = comp.height * 0.3, th = comp.height * 0.022;
+            var pct = D.cv(c, s, 'Percent', 70);
+            D.place(c, s, [comp.width / 2, comp.height / 2], false);
+            var track = D.group(s, 'Track');
+            D.ellipse(track.cont, size, size, [0, 0]);
+            D.stroke(track.cont, trackC, th, 1);
+            UK.set(UK.findProp(track.cont, 'ADBE Vector Graphic - Stroke'), 'ADBE Vector Stroke Opacity', 22);
+            var arc = D.group(s, 'Arc');
+            D.ellipse(arc.cont, size, size, [0, 0]);
+            D.stroke(arc.cont, acc, th, 2);
+            var tr = D.trim(arc.cont, 0, 0, -90);
+            var end = UK.findProp(tr, 'ADBE Vector Trim End');
+            UK.key2(end, sp.tIn + sp.d * 0.2, 0, sp.tIn + sp.d * 1.8, 70, 'expoOut');
+            UK.expr(tr, 'ADBE Vector Trim End', 'value / 70 * ' + pct);
+            var sc = s.transform.scale;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], c.ease);
+            UK.applyEaseExpr(sc, c.ease, D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.counterBadge', name: 'Counter Badge · Счётчик в круге',
+        desc: 'Круглый бейдж с числом, считающим от и до (контролы From/To/Duration) — подписчики, проценты, суммы.',
+        tags: 'counter badge счётчик число круг number', preview: 'counter',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Counter Badge', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var size = comp.height * 0.28;
+            D.place(c, s, [comp.width / 2, comp.height / 2], false);
+            var g = D.group(s, 'Circle');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            D.fill(g.cont, col);
+            var sc = s.transform.scale;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], c.ease);
+            UK.applyEaseExpr(sc, c.ease, D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true);
+            // число
+            var txt = comp.layers.addText('0');
+            txt.name = UK.PREFIX + 'Counter';
+            txt.inPoint = sp.tIn; txt.outPoint = sp.tOut;
+            txt.transform.position.setValue([comp.width / 2, comp.height / 2 + size * 0.14]);
+            try {
+                var doc = txt.property('ADBE Text Properties').property('ADBE Text Document');
+                var td = doc.value;
+                td.fontSize = Math.round(size * 0.4); td.fillColor = [1, 1, 1]; td.justification = ParagraphJustification.CENTER_JUSTIFY;
+                doc.setValue(td);
+                var from = UK.cv({ opts: c.opts, layer: txt }, 'From', 0), to = UK.cv({ opts: c.opts, layer: txt }, 'To', 100), dd = UK.cv({ opts: c.opts, layer: txt }, 'Count Duration', UK.fmt(sp.d * 2));
+                doc.expression = 'var v = ease(time, inPoint + ' + UK.fmt(sp.d * 0.3) + ', inPoint + ' + UK.fmt(sp.d * 0.3) + ' + ' + dd + ', ' + from + ', ' + to + ');\nMath.round(v).toString()';
+            } catch (e) {}
+            try { txt.setParentWithJump(s); } catch (e2) {}
+            txt.moveBefore(s);
+        }
+    });
+
+    D.add({
+        id: 'design.spinner', name: 'Loading Spinner · Спиннер',
+        desc: 'Дуга-четверть бесконечно вращается (выражение), проявляется и уходит. Скорость — контрол.',
+        tags: 'spinner loading загрузка спиннер loader', preview: 'spinner',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Spinner', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var size = comp.height * 0.16, speed = D.cv(c, s, 'Speed', 360);
+            D.place(c, s, [comp.width / 2, comp.height / 2], false);
+            var g = D.group(s, 'Arc');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            D.stroke(g.cont, col, comp.height * 0.014, 2);
+            var tr = D.trim(g.cont, 0, 28, 0);
+            UK.expr(tr, 'ADBE Vector Trim Offset', '(time - inPoint) * ' + speed);
+            UK.expr(tr, 'ADBE Vector Trim End', '28 + Math.sin((time - inPoint) * 3) * 14');
+            D.inOut(c, UK.findProp(g.tr, 'ADBE Vector Scale'), [0, 0], [100, 100], [0, 0], sp, true, s);
+        }
+    });
+
+    // ============================================================ CALLOUT'Ы / ЛИНИИ
+    D.add({
+        id: 'design.arrowCallout', name: 'Arrow Callout · Стрелка',
+        desc: 'Линия рисуется по направлению, на конце выскакивает наконечник. От точки (курсор/центр слоя) наружу.',
+        tags: 'arrow стрелка callout указатель line', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Arrow', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var len = comp.height * 0.28 * c.strength, th = Math.max(4, comp.height * 0.008);
+            var dx = c.dirV[0], dy = c.dirV[1];
+            var ang = Math.atan2(dy, dx) * 180 / Math.PI;
+            var g = D.group(s, 'Arrow');
+            D.path(g.cont, [[0, 0], [len, 0]]);
+            D.stroke(g.cont, col, th, 2);
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+            UK.set(g.tr, 'ADBE Vector Rotation', ang);
+            var head = D.group(s, 'Head');
+            var hs = th * 3.2;
+            D.path(head.cont, [[len + hs * 0.9, 0], [len - hs * 0.6, -hs], [len - hs * 0.6, hs]], null, null, true);
+            D.fill(head.cont, col);
+            UK.set(head.tr, 'ADBE Vector Rotation', ang);
+            var sc = UK.findProp(head.tr, 'ADBE Vector Scale');
+            UK.set(head.tr, 'ADBE Vector Anchor', [len * Math.cos(ang * Math.PI / 180), len * Math.sin(ang * Math.PI / 180)]);
+            UK.set(head.tr, 'ADBE Vector Position', [len * Math.cos(ang * Math.PI / 180), len * Math.sin(ang * Math.PI / 180)]);
+            UK.key2(sc, sp.tIn + sp.d * 0.7, [0, 0], sp.tIn + sp.d * 1.1, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut - sp.dOut * 0.6, [0, 0], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.pointerCallout', name: 'Pointer Callout · Указатель с подписью',
+        desc: 'Точка пульсирует, от неё рисуется ломаная линия к плашке-подписи, которая раскрывается. Как в product-видео.',
+        tags: 'pointer callout указатель подпись product line dot', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Pointer', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), dark = D.col(c, s, 'Color 2', D.PAL.dark);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var sx = c.dirId === 'L' ? -1 : 1, sy = c.dirId === 'D' ? 1 : -1;
+            var L1 = comp.height * 0.12, L2 = comp.height * 0.16, r = comp.height * 0.012;
+            var dot = D.group(s, 'Dot');
+            D.ellipse(dot.cont, r * 2, r * 2, [0, 0]);
+            D.fill(dot.cont, acc);
+            var ring = D.group(s, 'Ring');
+            D.ellipse(ring.cont, r * 2, r * 2, [0, 0]);
+            D.stroke(ring.cont, acc, 3, 1);
+            UK.expr(ring.tr, 'ADBE Vector Scale', 'var t = (time - inPoint) % 1.2; [1,1] * (100 + t * 180)');
+            UK.expr(ring.tr, 'ADBE Vector Group Opacity', 'var t = (time - inPoint) % 1.2; linear(t, 0, 1.2, 100, 0)');
+            D.inOut(c, UK.findProp(dot.tr, 'ADBE Vector Scale'), [0, 0], [100, 100], [0, 0], sp, true, s);
+            var ln = D.group(s, 'Line');
+            var p1 = [sx * L1, sy * L1], p2 = [sx * (L1 + L2), sy * L1];
+            D.path(ln.cont, [[0, 0], p1, p2]);
+            D.stroke(ln.cont, acc, Math.max(3, comp.height * 0.004), 2, 2);
+            var tr = D.trim(ln.cont, 0, 100, 0);
+            var end = UK.findProp(tr, 'ADBE Vector Trim End'), start = UK.findProp(tr, 'ADBE Vector Trim Start');
+            UK.key2(end, sp.tIn + sp.d * 0.3, 0, sp.tIn + sp.d, 100, c.ease);
+            if (sp.hasOut) UK.key2(start, sp.tOut - sp.dOut, 0, sp.tOut, 100, c.ease, true);
+            var box = D.group(s, 'Label');
+            var bw = comp.height * 0.22, bh = comp.height * 0.07;
+            D.rect(box.cont, bw, bh, [sx * bw / 2, 0], 8);
+            D.fill(box.cont, dark, 92);
+            UK.set(box.tr, 'ADBE Vector Position', [p2[0], p2[1] + sy * bh * 0.55]);
+            var sc = UK.findProp(box.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn + sp.d * 0.8, [0, 100], sp.tIn + sp.d * 1.4, [100, 100], c.ease);
+            UK.applyEaseExpr(sc, c.ease, D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut - sp.dOut * 0.4, [0, 100], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.speechBubble', name: 'Speech Bubble · Облачко',
+        desc: 'Скруглённое облачко с хвостиком выскакивает с перелётом из хвостика и сдувается в конце.',
+        tags: 'speech bubble облачко реплика comment', preview: 'popIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Bubble', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var w = comp.height * 0.36, h = comp.height * 0.16, tail = h * 0.35;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy - R.h / 2 - tail]; })() : [comp.width / 2, comp.height * 0.42];
+            D.place(c, s, pt, !!c.layer);
+            var g = D.group(s, 'Bubble');
+            D.rect(g.cont, w, h, [0, -tail - h / 2], h * 0.3);
+            D.path(g.cont, [[-w * 0.12, -tail - 2], [w * 0.08, -tail - 2], [-w * 0.02, 0]], null, null, true);
+            D.fill(g.cont, col);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + sp.d, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            var sh = UK.addFx(s, 'ADBE Drop Shadow', 'Shadow');
+            UK.set(sh, 'ADBE Drop Shadow-0002', 90); UK.set(sh, 'ADBE Drop Shadow-0004', 10); UK.set(sh, 'ADBE Drop Shadow-0005', 24);
+        }
+    });
+
+    D.add({
+        id: 'design.checkmarkDraw', name: 'Checkmark Draw · Галочка',
+        desc: 'Круг рисуется обводкой, затем внутри прорисовывается галочка — «готово / выполнено».',
+        tags: 'check галочка done success круг draw', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Checkmark', sp, false);
+            var col = D.col(c, s, 'Color 1', [0.25, 0.85, 0.45, 1]);
+            var size = comp.height * 0.26, th = comp.height * 0.018;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var ring = D.group(s, 'Ring');
+            D.ellipse(ring.cont, size, size, [0, 0]);
+            D.stroke(ring.cont, col, th, 2);
+            var tr1 = D.trim(ring.cont, 0, 100, -90);
+            UK.key2(UK.findProp(tr1, 'ADBE Vector Trim End'), sp.tIn, 0, sp.tIn + sp.d * 0.8, 100, 'expoInOut');
+            var chk = D.group(s, 'Check');
+            D.path(chk.cont, [[-size * 0.22, 0], [-size * 0.06, size * 0.16], [size * 0.25, -size * 0.17]]);
+            D.stroke(chk.cont, col, th, 2, 2);
+            var tr2 = D.trim(chk.cont, 0, 100, 0);
+            UK.key2(UK.findProp(tr2, 'ADBE Vector Trim End'), sp.tIn + sp.d * 0.6, 0, sp.tIn + sp.d * 1.2, 100, 'expoOut');
+            var sc = s.transform.scale;
+            UK.keys(sc, [[sp.tIn + sp.d * 1.1, [100, 100, 100]], [sp.tIn + sp.d * 1.3, [112, 112, 100]], [sp.tIn + sp.d * 1.55, [100, 100, 100]]], 'smooth');
+            if (sp.hasOut) UK.key2(s.transform.opacity, sp.tOut - sp.dOut, 100, sp.tOut, 0, c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.playButton', name: 'Play Button · Кнопка Play',
+        desc: 'Круг с треугольником Play выскакивает с перелётом, кольцо-пульс расходится. Для превью видео и курсов.',
+        tags: 'play кнопка button video круг треугольник', preview: 'popIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Play', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white), acc = D.col(c, s, 'Color 2', D.PAL.accent);
+            var size = comp.height * 0.24;
+            D.place(c, s, UK.center(comp), false);
+            var ring = D.group(s, 'Pulse');
+            D.ellipse(ring.cont, size, size, [0, 0]);
+            D.stroke(ring.cont, acc, 4, 1);
+            UK.expr(ring.tr, 'ADBE Vector Scale', 'var t = (time - inPoint) % 1.6; [1,1] * (100 + t * 60)');
+            UK.expr(ring.tr, 'ADBE Vector Group Opacity', 'var t = (time - inPoint) % 1.6; linear(t, 0, 1.6, 80, 0)');
+            var g = D.group(s, 'Button');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            D.fill(g.cont, acc);
+            var tri = D.group(s, 'Triangle');
+            var r = size * 0.22;
+            D.path(tri.cont, [[-r * 0.8, -r], [r * 1.1, 0], [-r * 0.8, r]], null, null, true);
+            D.fill(tri.cont, col);
+            D.roundCorners(tri.cont, r * 0.15);
+            var sc = s.transform.scale;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.subscribeButton', name: 'Subscribe Button · Кнопка подписки',
+        desc: 'Красная скруглённая кнопка выскакивает, рядом колокольчик, который покачивается после появления.',
+        tags: 'subscribe подписка кнопка youtube bell колокольчик', preview: 'popIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Subscribe', sp, false);
+            var red = D.col(c, s, 'Color 1', [0.9, 0.1, 0.1, 1]), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var w = comp.height * 0.3, h = comp.height * 0.085;
+            D.place(c, s, [comp.width / 2, comp.height * 0.78], false);
+            var btn = D.group(s, 'Button');
+            D.rect(btn.cont, w, h, [-h * 0.45, 0], h * 0.18);
+            D.fill(btn.cont, red);
+            var sc = UK.findProp(btn.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + sp.d, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            var bell = D.group(s, 'Bell');
+            var bx = w / 2 + h * 0.35, br = h * 0.26;
+            D.ellipse(bell.cont, br * 1.6, br * 1.6, [0, -br * 0.1]);
+            D.rect(bell.cont, br * 2.1, br * 0.5, [0, br * 0.75], br * 0.1);
+            D.ellipse(bell.cont, br * 0.7, br * 0.5, [0, br * 1.15]);
+            D.fill(bell.cont, white);
+            UK.set(bell.tr, 'ADBE Vector Position', [bx, 0]);
+            UK.set(bell.tr, 'ADBE Vector Anchor', [0, -br]);
+            var bsc = UK.findProp(bell.tr, 'ADBE Vector Scale');
+            UK.key2(bsc, sp.tIn + sp.d * 0.5, [0, 0], sp.tIn + sp.d * 1.1, [100, 100], 'back');
+            UK.applyEaseExpr(bsc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(bsc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            UK.expr(bell.tr, 'ADBE Vector Rotation', 'var t = time - inPoint - ' + UK.fmt(sp.d * 1.1) + '; t > 0 ? Math.sin(t * 14) * 18 / Math.exp(t * 2.2) : 0');
+        }
+    });
+
+    D.add({
+        id: 'design.heartPop', name: 'Like Heart Pop · Сердечко',
+        desc: 'Сердце выскакивает с пружиной и даёт двойной «удар» как лайк; вокруг разлетаются точки.',
+        tags: 'heart сердце like лайк pop love', preview: 'elastic',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Heart', sp, false);
+            var col = D.col(c, s, 'Color 1', [1, 0.25, 0.35, 1]);
+            var r = comp.height * 0.11 * c.strength;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx + R.w / 2, R.cy - R.h / 2]; })() : UK.center(comp);
+            D.place(c, s, pt, !!c.layer);
+            var g = D.group(s, 'Heart');
+            var k = 0.55 * r;
+            D.path(g.cont,
+                [[0, r], [-r, -r * 0.15], [-r * 0.5, -r], [0, -r * 0.45], [r * 0.5, -r], [r, -r * 0.15]],
+                [[-k * 0.6, k * 0.9], [0, k * 0.9], [-k * 0.5, 0], [-k * 0.4, -k * 0.4], [-k * 0.5, 0], [0, -k * 0.6]],
+                [[k * 0.6, k * 0.9], [0, -k * 0.6], [k * 0.4, 0], [k * 0.4, -k * 0.4], [k * 0.5, 0], [0, k * 0.9]], true);
+            D.fill(g.cont, col);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+            UK.keys(sc, [[sp.tIn, [0, 0]], [sp.tIn + sp.d * 0.6, [115, 115]], [sp.tIn + sp.d * 0.8, [92, 92]], [sp.tIn + sp.d, [100, 100]]], 'smooth');
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            var dots = D.group(s, 'Dots');
+            D.ellipse(dots.cont, r * 0.14, r * 0.14, [r * 1.1, 0]);
+            D.fill(dots.cont, col);
+            D.repeater(dots.cont, 8, [0, 0], 45, [100, 100], 100, 100);
+            var dsc = UK.findProp(dots.tr, 'ADBE Vector Scale'), dop = UK.findProp(dots.tr, 'ADBE Vector Group Opacity');
+            UK.key2(dsc, sp.tIn + sp.d * 0.4, [40, 40], sp.tIn + sp.d * 1.2, [170, 170], 'expoOut');
+            UK.keys(dop, [[sp.tIn + sp.d * 0.4, 100], [sp.tIn + sp.d * 0.9, 100], [sp.tIn + sp.d * 1.2, 0]], 'smooth');
+        }
+    });
+
+    D.add({
+        id: 'design.quoteMarks', name: 'Quote Marks · Кавычки',
+        desc: 'Две крупные декоративные кавычки по диагонали вокруг слоя/центра выскакивают с перелётом и уходят.',
+        tags: 'quote кавычки цитата decor', preview: 'popIn',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Quotes', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var R = c.layer ? D.rectOf(c.layer, sp.tIn + sp.d) : { cx: comp.width / 2, cy: comp.height / 2, w: comp.width * 0.4, h: comp.height * 0.2 };
+            D.place(c, s, [R.cx, R.cy], !!c.layer);
+            var q = Math.max(24, R.h * 0.5);
+            function quote(cont, x, y, flip) {
+                var f = flip ? -1 : 1;
+                for (var i = 0; i < 2; i++) {
+                    var ox = x + i * q * 0.55 * f;
+                    D.ellipse(cont, q * 0.42, q * 0.42, [ox, y]);
+                    // хвостик кавычки: вниз-влево у открывающей, вверх-вправо у закрывающей
+                    D.path(cont, [[ox - q * 0.21 * f, y], [ox + q * 0.21 * f, y], [ox - q * 0.15 * f, y + q * 0.55 * f]], null, null, true);
+                }
+            }
+            var g1 = D.group(s, 'Open');
+            quote(g1.cont, -R.w / 2 - q * 0.9, -R.h / 2 - q * 0.2, false);
+            D.fill(g1.cont, col);
+            var g2 = D.group(s, 'Close');
+            quote(g2.cont, R.w / 2 + q * 0.9, R.h / 2 + q * 0.2, true);
+            D.fill(g2.cont, col);
+            var gs = [g1, g2];
+            for (var i = 0; i < 2; i++) {
+                var sc = UK.findProp(gs[i].tr, 'ADBE Vector Scale');
+                UK.key2(sc, sp.tIn + i * sp.d * 0.15, [0, 0], sp.tIn + sp.d + i * sp.d * 0.15, [100, 100], 'back');
+                UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+                if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            }
+        }
+    });
+
+    D.add({
+        id: 'design.dividerCenter', name: 'Divider Line · Линия из центра',
+        desc: 'Горизонтальная линия расходится из центра в обе стороны и схлопывается обратно. Разделитель секций/титров.',
+        tags: 'divider линия разделитель center line', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Divider', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var w = comp.width * 0.36 * c.strength, th = Math.max(3, comp.height * 0.005);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy + R.h / 2 + Math.max(14, R.h * 0.25)]; })() : UK.center(comp);
+            D.place(c, s, pt, !!c.layer);
+            var vertical = c.dirId === 'U' || c.dirId === 'D';
+            var g = D.group(s, 'Line');
+            D.path(g.cont, vertical ? [[0, -w / 2], [0, w / 2]] : [[-w / 2, 0], [w / 2, 0]]);
+            D.stroke(g.cont, col, th, 2);
+            var tr = D.trim(g.cont, 50, 50, 0);
+            var st = UK.findProp(tr, 'ADBE Vector Trim Start'), en = UK.findProp(tr, 'ADBE Vector Trim End');
+            UK.key2(st, sp.tIn, 50, sp.tIn + sp.d, 0, c.ease);
+            UK.key2(en, sp.tIn, 50, sp.tIn + sp.d, 100, c.ease);
+            if (sp.hasOut) { UK.key2(st, sp.tOut - sp.dOut, 0, sp.tOut, 50, c.ease, true); UK.key2(en, sp.tOut - sp.dOut, 100, sp.tOut, 50, c.ease, true); }
+        }
+    });
+
+    D.add({
+        id: 'design.dashedLine', name: 'Dashed Line · Пунктир',
+        desc: 'Пунктирная линия по направлению рисуется и бежит (offset пунктира выражением). Схемы, маршруты.',
+        tags: 'dashed пунктир линия route path', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Dashed Line', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var len = comp.width * 0.4 * c.strength, th = Math.max(3, comp.height * 0.006);
+            D.place(c, s, UK.center(comp), false);
+            var g = D.group(s, 'Dash');
+            var dx = c.dirV[0], dy = c.dirV[1];
+            D.path(g.cont, [[-dx * len / 2, -dy * len / 2], [dx * len / 2, dy * len / 2]]);
+            var st = D.stroke(g.cont, col, th, 2);
+            D.dashes(st, th * 3, th * 2.2);
+            try { UK.expr(st.property('ADBE Vector Stroke Dashes'), 'ADBE Vector Stroke Offset', '-time * ' + th * 8); } catch (e) {}
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+        }
+    });
+
+    D.add({
+        id: 'design.zigzagLine', name: 'Zigzag Line · Зигзаг',
+        desc: 'Зигзагообразная линия рисуется по направлению и стирается в конце. Декор для динамичных титров.',
+        tags: 'zigzag зигзаг линия decor', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Zigzag', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var len = comp.width * 0.3 * c.strength, amp = comp.height * 0.025, n = 12, th = Math.max(3, comp.height * 0.006);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy + R.h / 2 + Math.max(14, R.h * 0.3)]; })() : UK.center(comp);
+            D.place(c, s, pt, !!c.layer);
+            var verts = [], vertical = c.dirId === 'U' || c.dirId === 'D';
+            for (var i = 0; i <= n; i++) {
+                var a = -len / 2 + len * i / n, b = (i % 2 ? amp : -amp);
+                verts.push(vertical ? [b, a] : [a, b]);
+            }
+            var g = D.group(s, 'Zigzag');
+            D.path(g.cont, verts);
+            D.stroke(g.cont, col, th, 2, 2);
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, c.dirId === 'R' || c.dirId === 'D');
+        }
+    });
+
+    D.add({
+        id: 'design.wavyLine', name: 'Wavy Line · Волна',
+        desc: 'Плавная синусоидальная линия рисуется и бежит (фаза — выражение). Подчёркивание/декор.',
+        tags: 'wavy волна линия sine underline decor', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Wavy Line', sp, false);
+            var col = D.col(c, s, 'Color 1', D.PAL.accent);
+            var len = comp.width * 0.3 * c.strength, amp = comp.height * 0.02, n = 8, th = Math.max(3, comp.height * 0.006);
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy + R.h / 2 + Math.max(14, R.h * 0.3)]; })() : UK.center(comp);
+            D.place(c, s, pt, !!c.layer);
+            var verts = [], inT = [], outT = [], seg = len / n;
+            for (var i = 0; i <= n; i++) {
+                verts.push([-len / 2 + seg * i, (i % 2 ? amp : -amp)]);
+                inT.push([-seg * 0.4, 0]); outT.push([seg * 0.4, 0]);
+            }
+            var g = D.group(s, 'Wave');
+            D.path(g.cont, verts, inT, outT, false);
+            D.stroke(g.cont, col, th, 2, 2);
+            UK.expr(g.tr, 'ADBE Vector Position', '[((time - inPoint) * ' + Math.round(seg * 2) + ') % ' + Math.round(seg * 2) + ' - ' + Math.round(seg) + ', 0]');
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+            UK.set(g.tr, 'ADBE Vector Group Opacity', 100);
+        }
+    });
+
+    D.add({
+        id: 'design.cornerBadge', name: 'Corner Badge · Бейдж в углу',
+        desc: 'Круглый бейдж с кольцом в углу кадра (угол — по направлению): выскакивает, кольцо расходится. Под логотип/иконку.',
+        tags: 'badge бейдж угол logo circle ring', preview: 'badge',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Corner Badge', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var size = comp.height * 0.14, m = comp.height * 0.08;
+            var sx = c.dirId === 'L' ? -1 : 1, sy = c.dirId === 'D' ? 1 : -1;
+            D.place(c, s, [comp.width / 2 + sx * (comp.width / 2 - m - size / 2), comp.height / 2 + sy * (comp.height / 2 - m - size / 2)], false);
+            var ring = D.group(s, 'Ring');
+            D.ellipse(ring.cont, size, size, [0, 0]);
+            D.stroke(ring.cont, white, 4, 1);
+            var rsc = UK.findProp(ring.tr, 'ADBE Vector Scale'), rop = UK.findProp(ring.tr, 'ADBE Vector Group Opacity');
+            UK.key2(rsc, sp.tIn + sp.d * 0.3, [60, 60], sp.tIn + sp.d * 1.4, [150, 150], 'expoOut');
+            UK.keys(rop, [[sp.tIn + sp.d * 0.3, 100], [sp.tIn + sp.d, 60], [sp.tIn + sp.d * 1.4, 0]], 'smooth');
+            var g = D.group(s, 'Badge');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            D.fill(g.cont, acc);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + sp.d, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.neonOutline', name: 'Neon Rect Outline · Неоновая рамка',
+        desc: 'Скруглённая неоновая обводка со свечением рисуется по контуру и слегка мерцает. Вокруг слоя или по центру.',
+        tags: 'neon неон рамка glow outline', preview: 'glow',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Neon', sp, false);
+            var col = D.col(c, s, 'Color 1', [0.3, 0.9, 1, 1]);
+            var R = c.layer ? D.rectOf(c.layer, sp.tIn + sp.d) : { cx: comp.width / 2, cy: comp.height / 2, w: comp.width * 0.4, h: comp.height * 0.3 };
+            var pad = Math.max(20, R.h * 0.3);
+            D.place(c, s, [R.cx, R.cy], !!c.layer);
+            var g = D.group(s, 'Outline');
+            D.rect(g.cont, R.w + pad * 2, R.h + pad * 1.4, [0, 0], Math.max(12, R.h * 0.2));
+            D.stroke(g.cont, col, Math.max(4, comp.height * 0.006), 2, 2);
+            D.draw(c, D.trim(g.cont, 0, 100, 0), sp, false);
+            var glow = UK.addFx(s, 'ADBE Glo2', 'Neon Glow');
+            UK.set(glow, 'ADBE Glo2-0001', 2); UK.set(glow, 'ADBE Glo2-0002', 20); UK.set(glow, 'ADBE Glo2-0003', 60); UK.set(glow, 'ADBE Glo2-0004', 1.6);
+            UK.expr(glow, 'ADBE Glo2-0004', 'value * (0.85 + 0.15 * Math.sin(time * 9) + (random() < 0.05 ? -0.4 : 0))');
+            var glow2 = UK.addFx(s, 'ADBE Glo2', 'Neon Glow Wide');
+            UK.set(glow2, 'ADBE Glo2-0001', 2); UK.set(glow2, 'ADBE Glo2-0002', 10); UK.set(glow2, 'ADBE Glo2-0003', 220); UK.set(glow2, 'ADBE Glo2-0004', 0.6);
+        }
+    });
+
+    D.add({
+        id: 'design.stickerCard', name: 'Sticker Card · Карточка-стикер',
+        desc: 'Скруглённая карточка с тенью и лёгким наклоном выскакивает с перелётом и сдувается в конце. Подложка под фото/текст.',
+        tags: 'sticker card карточка стикер shadow тень', preview: 'shadow',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Sticker Card', sp, true);
+            var col = D.col(c, s, 'Color 1', D.PAL.white);
+            var R = c.layer ? D.rectOf(c.layer, sp.tIn + sp.d) : { cx: comp.width / 2, cy: comp.height / 2, w: comp.width * 0.3, h: comp.height * 0.3 };
+            var pad = Math.max(24, R.h * 0.15);
+            D.place(c, s, [R.cx, R.cy], !!c.layer);
+            var g = D.group(s, 'Card');
+            D.rect(g.cont, R.w + pad * 2, R.h + pad * 2, [0, 0], Math.max(16, R.h * 0.08));
+            D.fill(g.cont, col);
+            s.transform.rotation.setValue(-4 * c.strength);
+            var sh = UK.addFx(s, 'ADBE Drop Shadow', 'Shadow');
+            UK.set(sh, 'ADBE Drop Shadow-0002', 110); UK.set(sh, 'ADBE Drop Shadow-0003', 135); UK.set(sh, 'ADBE Drop Shadow-0004', 18); UK.set(sh, 'ADBE Drop Shadow-0005', 40);
+            var sc = s.transform.scale;
+            UK.key2(sc, sp.tIn, [0, 0, 100], sp.tIn + sp.d, [100, 100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100, 100], sp.tOut, [0, 0, 100], c.ease, true);
+            var rot = s.transform.rotation;
+            UK.key2(rot, sp.tIn, -4 * c.strength - 25, sp.tIn + sp.d, -4 * c.strength, 'back');
+        }
+    });
+
+    D.add({
+        id: 'design.locationPin', name: 'Location Pin · Метка на карте',
+        desc: 'Пин-метка падает сверху с отскоком, под ним пульсирует кольцо. Для карт и указания места.',
+        tags: 'pin метка карта location map marker', preview: 'bounce',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Pin', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var r = comp.height * 0.045 * c.strength;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, false);
+            var ring = D.group(s, 'Pulse');
+            D.ellipse(ring.cont, r * 1.6, r * 0.6, [0, 0]);
+            D.stroke(ring.cont, acc, 3, 1);
+            UK.expr(ring.tr, 'ADBE Vector Scale', 'var t = (time - inPoint) % 1.4; [1,1] * (60 + t * 120)');
+            UK.expr(ring.tr, 'ADBE Vector Group Opacity', 'var t = (time - inPoint) % 1.4; linear(t, 0, 1.4, 90, 0)');
+            var pin = D.group(s, 'Pin');
+            D.ellipse(pin.cont, r * 2, r * 2, [0, -r * 2.2]);
+            D.path(pin.cont, [[-r * 0.95, -r * 1.9], [r * 0.95, -r * 1.9], [0, 0]], null, null, true);
+            D.fill(pin.cont, acc);
+            var hole = D.group(s, 'Hole');
+            D.ellipse(hole.cont, r * 0.8, r * 0.8, [0, -r * 2.2]);
+            D.fill(hole.cont, white);
+            var pos = s.transform.position, drop = comp.height * 0.5;
+            UK.key2(pos, sp.tIn, [pt[0], pt[1] - drop], sp.tIn + sp.d, pt, 'bounce');
+            UK.applyEaseExpr(pos, 'bounce', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(pos, sp.tOut - sp.dOut, pt, sp.tOut, [pt[0], pt[1] - drop], c.ease, true);
+            UK.key2(s.transform.opacity, sp.tIn, 0, sp.tIn + sp.d * 0.3, 100, 'linear');
+        }
+    });
+
+    D.add({
+        id: 'design.timelineDots', name: 'Timeline Dots · Таймлайн',
+        desc: 'Горизонтальная линия рисуется, на ней по очереди выскакивают точки-вехи с перелётом. Для этапов/шагов.',
+        tags: 'timeline таймлайн этапы шаги steps dots line', preview: 'line',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Timeline', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var w = comp.width * 0.6, n = 5, r = comp.height * 0.02;
+            D.place(c, s, UK.center(comp), false);
+            var ln = D.group(s, 'Line');
+            D.path(ln.cont, [[-w / 2, 0], [w / 2, 0]]);
+            D.stroke(ln.cont, white, Math.max(3, comp.height * 0.005), 2);
+            D.draw(c, D.trim(ln.cont, 0, 100, 0), sp, false);
+            for (var i = 0; i < n; i++) {
+                var g = D.group(s, 'Dot ' + (i + 1));
+                D.ellipse(g.cont, r * 2, r * 2, [0, 0]);
+                D.fill(g.cont, acc);
+                var ring = D.ellipse(g.cont, r * 3, r * 3, [0, 0]);
+                var st = D.stroke(g.cont, white, 3, 1);
+                UK.set(g.tr, 'ADBE Vector Position', [-w / 2 + w * i / (n - 1), 0]);
+                var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+                var t0 = sp.tIn + sp.d * (0.2 + 0.8 * i / (n - 1));
+                UK.key2(sc, t0, [0, 0], t0 + sp.d * 0.5, [100, 100], 'back');
+                UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+                if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+            }
+        }
+    });
+
+    D.add({
+        id: 'design.iconCircle', name: 'Icon Circle Backing · Круг под иконку', needs: 'layer',
+        desc: 'Круглая подложка под выделенный слой (иконку/лого) с тонким кольцом: выскакивает с перелётом, кольцо расходится.',
+        tags: 'icon круг подложка иконка logo backing', preview: 'badge',
+        apply: function (c) {
+            var sp = D.span(c), s = D.layer(c, 'Icon Circle', sp, true);
+            var R = D.rectOf(c.layer, sp.tIn + sp.d);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var size = Math.max(R.w, R.h) * 1.5;
+            D.place(c, s, [R.cx, R.cy], true);
+            var ring = D.group(s, 'Ring');
+            D.ellipse(ring.cont, size, size, [0, 0]);
+            D.stroke(ring.cont, white, 3, 1);
+            var rsc = UK.findProp(ring.tr, 'ADBE Vector Scale'), rop = UK.findProp(ring.tr, 'ADBE Vector Group Opacity');
+            UK.key2(rsc, sp.tIn + sp.d * 0.4, [80, 80], sp.tIn + sp.d * 1.5, [140, 140], 'expoOut');
+            UK.keys(rop, [[sp.tIn + sp.d * 0.4, 100], [sp.tIn + sp.d * 1.5, 0]], 'smooth');
+            var g = D.group(s, 'Circle');
+            D.ellipse(g.cont, size, size, [0, 0]);
+            D.fill(g.cont, acc);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + sp.d, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true);
+        }
+    });
+
+    D.add({
+        id: 'design.hexBadge', name: 'Hex Badge · Шестиугольник',
+        desc: 'Шестиугольный бейдж с обводкой: заливка выскакивает с поворотом, контур дорисовывается. Tech/gaming стиль.',
+        tags: 'hexagon шестиугольник badge tech gaming', preview: 'badge',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Hex Badge', sp, false);
+            var acc = D.col(c, s, 'Color 1', D.PAL.accent), white = D.col(c, s, 'Color 2', D.PAL.white);
+            var r = comp.height * 0.13 * c.strength;
+            var pt = c.layer ? (function () { var R = D.rectOf(c.layer, sp.tIn); return [R.cx, R.cy]; })() : UK.center(comp);
+            D.place(c, s, pt, !!c.layer);
+            var g = D.group(s, 'Hex');
+            D.star(g.cont, { polygon: true, points: 6, outer: r, rotation: 30 });
+            D.fill(g.cont, acc, 90);
+            var sc = UK.findProp(g.tr, 'ADBE Vector Scale'), rot = UK.findProp(g.tr, 'ADBE Vector Rotation');
+            UK.key2(sc, sp.tIn, [0, 0], sp.tIn + sp.d, [100, 100], 'back');
+            UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+            UK.key2(rot, sp.tIn, -60, sp.tIn + sp.d, 0, c.ease);
+            if (sp.hasOut) { UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut, [0, 0], c.ease, true); UK.key2(rot, sp.tOut - sp.dOut, 0, sp.tOut, 60, c.ease, true); }
+            var o = D.group(s, 'Outline');
+            D.star(o.cont, { polygon: true, points: 6, outer: r * 1.25, rotation: 30 });
+            D.stroke(o.cont, white, Math.max(3, comp.height * 0.005), 1, 2);
+            D.draw(c, D.trim(o.cont, 0, 100, 0), sp, false);
+        }
+    });
+
+    D.add({
+        id: 'design.socialBar', name: 'Social Bar · Соцсети плашка',
+        desc: 'Плашка с тремя круглыми слотами под иконки соцсетей: плашка раскрывается, кружки выскакивают по очереди.',
+        tags: 'social соцсети плашка icons bar', preview: 'bar',
+        apply: function (c) {
+            var sp = D.span(c), comp = c.comp, s = D.layer(c, 'Social Bar', sp, false);
+            var dark = D.col(c, s, 'Color 1', D.PAL.dark), acc = D.col(c, s, 'Color 2', D.PAL.accent);
+            var h = comp.height * 0.08, w = h * 4.6, r = h * 0.32;
+            D.place(c, s, [comp.width * 0.5, comp.height * 0.88], false);
+            var bar = D.group(s, 'Bar');
+            D.rect(bar.cont, w, h, [0, 0], h / 2);
+            D.fill(bar.cont, dark, 92);
+            D.scaleIn(c, bar.tr, 'x', sp, s);
+            for (var i = 0; i < 3; i++) {
+                var g = D.group(s, 'Slot ' + (i + 1));
+                D.ellipse(g.cont, r * 2, r * 2, [0, 0]);
+                D.fill(g.cont, acc);
+                UK.set(g.tr, 'ADBE Vector Position', [-w / 2 + h * 0.75 + i * h * 1.55, 0]);
+                var sc = UK.findProp(g.tr, 'ADBE Vector Scale');
+                var t0 = sp.tIn + sp.d * (0.5 + i * 0.15);
+                UK.key2(sc, t0, [0, 0], t0 + sp.d * 0.5, [100, 100], 'back');
+                UK.applyEaseExpr(sc, 'back', D.ctx(c, s));
+                if (sp.hasOut) UK.key2(sc, sp.tOut - sp.dOut, [100, 100], sp.tOut - sp.dOut * 0.5, [0, 0], c.ease, true);
+            }
+        }
+    });
+
+})();
+
+
 // ---- src/80_combos.jsx
 // =============================================================================
 //  Готовые решения (combo) — связки пресетов: появление + лук/эффект + свет + уход
@@ -6977,6 +10679,426 @@ UK.PREVIEW = UK.PREVIEW || {};
             tr(c, 'trans.lensDistort');
             tr(c, 'trans.zoomBlur', weak(0.6 * c.strength));
             tr(c, 'trans.chromaZoom', weak(0.5 * c.strength));
+        }
+    });
+
+})();
+
+
+// ---- src/presets/81_combos_pro.jsx
+// =============================================================================
+//  Готовые решения PRO (combo.pro*) — премиальные связки под конкретные жанры:
+//  YouTube-интро, сторис, кино-титры, продуктовое видео, спорт, HUD, подкаст…
+//  Опциональные части (design.*, trans.pro*) подключаются, если пресет зарегистрирован.
+// =============================================================================
+(function () {
+
+    // ---------------------------------------------------------------- хелперы
+    function span(L) { return Math.max(0, L.outPoint - L.inPoint); }
+    function part(c, k, L) {
+        L = L || c.layer;
+        var lim = span(L) / 2.5;
+        return Math.max(c.fd * 2, Math.min(c.dur * (k || 1), lim > 0 ? lim : c.dur * (k || 1)));
+    }
+    /** Первый существующий id из списка (или null). */
+    function pick() {
+        for (var i = 0; i < arguments.length; i++) if (arguments[i] && UK.byId[arguments[i]]) return arguments[i];
+        return null;
+    }
+    function at(c, id, over, L) {
+        id = pick.apply(null, UK.isArr(id) ? id : [id]);
+        if (!id) return null;
+        return UK.applyTo(id, L || c.layer, c.opts, over || {}, c.i);
+    }
+    function inAt(c, id, k, over, L) { return at(c, id, UK.mergeOpts({ dur: part(c, k, L) }, over), L); }
+    function outAt(c, id, k, over, L) { return at(c, id, UK.mergeOpts({ dur: part(c, k, L), startMode: 'in', stagger: 0 }, over), L); }
+    function fx(c, id, over, L) { return at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), L); }
+    function atTime(c, id, t, over, L) {
+        var comp = c.comp, old = comp.time;
+        t = UK.clamp(t, 0, comp.duration);
+        comp.time = t;
+        try { at(c, id, UK.mergeOpts({ startMode: 'playhead', stagger: 0 }, over), L); }
+        finally { comp.time = old; }
+    }
+    function startT(c, L) { L = L || c.layer; return (c.opts.startMode === 'playhead' ? c.comp.time : L.inPoint) + (Number(c.opts.stagger) || 0) * c.i; }
+    function tr(c, id, over) {
+        id = pick.apply(null, UK.isArr(id) ? id : [id]);
+        if (!id) return null;
+        return UK.applyTrans(id, c.comp, c.layers, c.opts, over || {});
+    }
+    function onB(c, id, over) { if (c.B) at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), c.B); }
+    function onA(c, id, over) { if (c.A) at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), c.A); }
+    /** Дизайн-элемент (design.*) рядом со слоем — только если есть такой пресет. Применяется к тому же слою с курсором на его старте. */
+    function design(c, ids, over) {
+        var id = pick.apply(null, ids);
+        if (!id) return;
+        var p = UK.byId[id];
+        if (p.needs === 'text' && !UK.isText(c.layer)) return;
+        atTime(c, id, startT(c), over || {});
+    }
+    var weak = function (k) { return { strength: Math.round(k * 100) }; };
+    var D = 'design.';
+
+    // =========================================================== МЕДИА / БРЕНД
+    UK.add({
+        id: 'combo.proYouTubeIntro', cat: 'combo', name: 'YouTube Intro · Интро канала', preview: 'combo',
+        desc: 'Light Reveal (или Scale Pop) → God Rays + Light Sweep → Glow → Chromatic Pop Out. Логотип канала за 3 секунды.',
+        tags: 'youtube intro channel logo rays sweep интро канал готовое pro',
+        apply: function (c) {
+            var din = part(c, 1), t0 = startT(c);
+            inAt(c, ['in.proLight', 'in.proIrisGlow', 'in.scalePop'], 1, { ease: 'back' });
+            fx(c, 'light.godRays', weak(0.6 * c.strength));
+            atTime(c, 'light.sweepSharp', t0 + din * 0.8, { dur: din * 0.7 });
+            fx(c, 'fx.glow', weak(0.5 * c.strength));
+            outAt(c, ['out.proChromaPop', 'out.zoomBlur'], 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proInstaStory', cat: 'combo', name: 'Instagram Story · Сторис', preview: 'popIn',
+        desc: 'Elastic Drop → пилюля-тег (если есть дизайн-пресет) → Pulse → Bounce Out. Вертикальный контент, стикеры.',
+        tags: 'instagram story reels vertical sticker pop сторис pro',
+        apply: function (c) {
+            inAt(c, ['in.proElasticDrop', 'in.elasticPop'], 1, { ease: 'elastic' });
+            design(c, [D + 'pillTag', D + 'stickerCard']);
+            fx(c, 'fx.dropShadow', weak(0.6));
+            fx(c, 'fx.pulse', weak(0.3 * c.strength));
+            outAt(c, ['out.proElasticDrop', 'out.pop'], 0.7, { ease: 'bounce' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proTitleCard', cat: 'combo', name: 'Title Card Cinematic · Кино-титр', preview: 'textScale',
+        desc: 'Текст: Blur In по буквам + Tracking In → Letterbox + Film Grain на тексте → Fade Out по буквам. Элегантный заголовок фильма.',
+        tags: 'title card cinematic film text letterbox titles титр кино pro', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.charsBlur', 1.2, { ease: 'smooth' });
+            inAt(c, 'text.trackingIn', 1.6, { ease: 'expoOut' });
+            fx(c, 'fx.letterbox', weak(1));
+            fx(c, 'fx.filmGrain', weak(0.4 * c.strength));
+            fx(c, 'fx.proMist', weak(0.5 * c.strength));
+            outAt(c, 'text.fadeOutChars', 0.9, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proQuoteCard', cat: 'combo', name: 'Quote Card · Цитата', preview: 'textUp',
+        desc: 'Текст: Fade по словам → кавычки и подчёркивание (дизайн, если доступно) → Soft Shadow → Fade Out по словам.',
+        tags: 'quote card text words underline цитата pro', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.fadeWords', 1.4, { ease: 'smooth' });
+            design(c, [D + 'quoteMarks']);
+            design(c, [D + 'titleUnderline', D + 'underline']);
+            fx(c, 'fx.dropShadow', weak(0.4));
+            outAt(c, 'text.fadeOutWords', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proEndScreen', cat: 'combo', name: 'End Screen · Конечная заставка', preview: 'camera',
+        desc: 'Медленный отъезд + Moody Dark + Vignette + затемнение для карточек/кнопок; Fade In/Out. Фон конечной заставки YouTube.',
+        tags: 'end screen outro subscribe dark vignette конечная заставка pro',
+        apply: function (c) {
+            fx(c, 'cam.kenBurnsOut', weak(0.6));
+            fx(c, 'fx.proMoody', weak(0.8 * c.strength));
+            fx(c, 'fx.proColorVignette', weak(0.7));
+            design(c, [D + 'subscribeButton', D + 'playButton']);
+            inAt(c, 'in.fade', 1, { ease: 'smooth' });
+            outAt(c, 'out.fade', 1, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proKineticBurst', cat: 'combo', name: 'Kinetic Typography Burst · Кинетика', preview: 'textScale',
+        desc: 'Текст: Zoom Words + Jitter + Chromatic → Scale Out. Агрессивная кинетическая типографика под бит.',
+        tags: 'kinetic typography burst zoom words rgb jitter кинетика pro', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.zoomWords', 1, { ease: 'expoOut' });
+            fx(c, 'text.jitter', weak(0.6 * c.strength));
+            fx(c, 'fx.chromatic', weak(0.7 * c.strength));
+            fx(c, 'fx.pulse', weak(0.4));
+            outAt(c, 'text.scaleOut', 0.6, { ease: 'expoIn' });
+        }
+    });
+
+    // =========================================================== ПРОДУКТ / КОММЕРЦИЯ
+    UK.add({
+        id: 'combo.proProductHero', cat: 'combo', name: 'Product Hero · Продукт крупным планом', preview: 'orbit',
+        desc: 'Depth Push (или Scale Soft) → Orbit 3D + Rim Light → Anamorphic Streak → Light Sweep → Spin Pop Out.',
+        tags: 'product hero showcase orbit rim light anamorphic продукт pro',
+        apply: function (c) {
+            var din = part(c, 1), t0 = startT(c);
+            inAt(c, ['in.proDepth', 'in.scaleSoft'], 1, { ease: 'expoOut' });
+            fx(c, 'cam.orbit3D', weak(0.5 * c.strength));
+            fx(c, 'light.rimLight', weak(0.8));
+            fx(c, 'light.proAnamorphic', weak(0.6 * c.strength));
+            atTime(c, 'light.sweepSoft', t0 + din * 1.1, { dur: din });
+            outAt(c, ['out.proSpinPop', 'out.spinZoom'], 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proRealEstate', cat: 'combo', name: 'Real Estate · Недвижимость', preview: 'pan',
+        desc: 'Медленная панорама + Clarity + Golden Hour + плашка-титр (дизайн, если доступно) + Fade In/Out. Чистый лук для обзоров интерьеров.',
+        tags: 'real estate property interior pan clarity warm недвижимость pro',
+        apply: function (c) {
+            fx(c, 'cam.pan', weak(0.5 * c.strength));
+            fx(c, 'fx.proClarity', weak(0.8));
+            fx(c, 'fx.proGoldenHour', weak(0.5 * c.strength));
+            design(c, [D + 'lowerThirdBar', D + 'lowerThirdLine']);
+            inAt(c, 'in.fade', 1, { ease: 'smooth' });
+            outAt(c, 'out.fade', 1, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proFood', cat: 'combo', name: 'Food & Cooking · Еда', preview: 'popIn',
+        desc: 'Scale Pop → Golden Hour + Clarity + Vibrance-подсветка → маркер-подчёркивание для текста (если доступно) → Soft Focus Out.',
+        tags: 'food cooking recipe warm clarity pop еда рецепт pro',
+        apply: function (c) {
+            inAt(c, ['in.proSpinPop', 'in.scalePop'], 1, { ease: 'back' });
+            fx(c, 'fx.proGoldenHour', weak(0.6 * c.strength));
+            fx(c, 'fx.proClarity', weak(0.7));
+            fx(c, 'fx.proKodak', weak(0.4));
+            design(c, [D + 'highlightMarker', D + 'textBacking']);
+            outAt(c, ['out.proSoftFocus', 'out.blur'], 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proMinimalCorp', cat: 'combo', name: 'Minimal Corporate · Минимализм', preview: 'slideIn',
+        desc: 'Soft Mask Wipe (или Fade+Slide) → линия-подчёркивание (дизайн) → Matte Fade + Sharpen → Fade+Slide Out. Строгий корпоративный стиль.',
+        tags: 'minimal corporate clean business underline минимализм корпоративный pro',
+        apply: function (c) {
+            inAt(c, ['in.proStrokeWipe', 'in.fadeSlide'], 1, { ease: 'expoOut' });
+            design(c, [D + 'titleUnderline', D + 'underline']);
+            fx(c, 'fx.proMatte', weak(0.5 * c.strength));
+            fx(c, 'fx.proSharpen', weak(0.5));
+            outAt(c, ['out.proStrokeWipe', 'out.fadeSlide'], 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proPodcast', cat: 'combo', name: 'Podcast / Interview · Интервью', preview: 'vignette',
+        desc: 'Fade In → Soft Vignette + Kodak-лук + Clarity → плашка имени (дизайн, если доступно) → Fade Out. Говорящая голова.',
+        tags: 'podcast interview talking head lower third vignette подкаст интервью pro',
+        apply: function (c) {
+            inAt(c, 'in.fade', 0.8, { ease: 'smooth' });
+            fx(c, 'fx.vignette', weak(0.5 * c.strength));
+            fx(c, 'fx.proKodak', weak(0.45));
+            fx(c, 'fx.proClarity', weak(0.5));
+            design(c, [D + 'lowerThirdLine', D + 'lowerThirdBar']);
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    // =========================================================== ТРЕВЕЛ / СВАДЬБА / ДОКУМЕНТАЛКА
+    UK.add({
+        id: 'combo.proTravelVlog', cat: 'combo', name: 'Travel Vlog · Тревел-влог', preview: 'leak',
+        desc: 'Handheld + Golden Hour + Light Leak Pro + Lens Dirt + Fade In/Out. Солнечный влог «с рук».',
+        tags: 'travel vlog handheld golden hour light leak тревел влог pro',
+        apply: function (c) {
+            fx(c, 'cam.handheld', weak(0.5 * c.strength));
+            fx(c, 'fx.proGoldenHour', weak(0.7 * c.strength));
+            fx(c, 'light.proLeakPro', weak(0.6));
+            fx(c, 'fx.proLensDirt', weak(0.6));
+            inAt(c, 'in.fade', 0.8, { ease: 'smooth' });
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proWedding', cat: 'combo', name: 'Wedding Film · Свадебное кино', preview: 'glow',
+        desc: 'Soft Focus In → медленный Ken Burns + Pastel Dream + Pro-Mist + Bokeh → Soft Focus Out. Нежная воздушная картинка.',
+        tags: 'wedding film romantic soft pastel mist bokeh свадьба pro',
+        apply: function (c) {
+            inAt(c, ['in.proSoftFocus', 'in.blur'], 1.2, { ease: 'smooth' });
+            fx(c, 'cam.kenBurnsIn', weak(0.5));
+            fx(c, 'fx.proPastelDream', weak(0.7 * c.strength));
+            fx(c, 'fx.proMist', weak(0.6));
+            fx(c, 'light.proBokeh', weak(0.4));
+            outAt(c, ['out.proSoftFocus', 'out.blur'], 1, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proDocArchive', cat: 'combo', name: 'Documentary Archive · Архивная хроника', preview: 'grain',
+        desc: 'Faded Film + рамка 8mm + Gate Weave + Dust & Scratches + Exposure Flicker + Fade In/Out. «Найденная плёнка».',
+        tags: 'documentary archive found footage 8mm dust weave хроника архив pro',
+        apply: function (c) {
+            fx(c, 'fx.proFilmFade', weak(0.9 * c.strength));
+            fx(c, 'fx.proFilmBorder', weak(0.8));
+            fx(c, 'fx.proGateWeave', weak(0.7));
+            fx(c, 'fx.proDust', weak(0.8));
+            fx(c, 'fx.proFlickerExposure', weak(0.6));
+            inAt(c, 'in.fade', 0.6, { ease: 'linear' });
+            outAt(c, 'out.fade', 0.6, { ease: 'linear' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proMemorial', cat: 'combo', name: 'Soft Memorial · Светлая память', preview: 'fadeIn',
+        desc: 'Долгий Fade In → Pro-Mist + лёгкая десатурация + медленный дрейф → долгий Fade Out. Спокойно и бережно.',
+        tags: 'memorial soft slow drift desaturate tribute память pro',
+        apply: function (c) {
+            inAt(c, 'in.fade', 1.6, { ease: 'smooth' });
+            fx(c, 'fx.proMist', weak(0.7 * c.strength));
+            fx(c, 'fx.proMatte', weak(0.6));
+            fx(c, 'fx.bwContrast', weak(0.3));
+            fx(c, 'cam.drift', weak(0.4));
+            outAt(c, 'out.fade', 1.6, { ease: 'smooth' });
+        }
+    });
+
+    // =========================================================== ЭНЕРГИЯ / СПОРТ / ИГРЫ
+    UK.add({
+        id: 'combo.proSports', cat: 'combo', name: 'Sports Promo · Спорт', preview: 'zoom',
+        desc: 'Zoom Through → Speed Lines + Chromatic + Teal&Orange Pro → Zoom Punch перед концом → Glitch Slices Out.',
+        tags: 'sports promo action speed lines punch rgb спорт промо pro',
+        apply: function (c) {
+            var dout = part(c, 0.7), hit = Math.min(0.3, part(c, 0.35));
+            inAt(c, ['in.proZoomThrough', 'in.zoomFar'], 0.9, { ease: 'expoOut' });
+            fx(c, 'fx.proSpeedLines', weak(0.6 * c.strength));
+            fx(c, 'fx.chromatic', weak(0.6));
+            fx(c, 'fx.proTealOrange', weak(0.7));
+            atTime(c, 'fx.zoomHit', c.layer.outPoint - dout - hit - c.fd, { dur: hit });
+            outAt(c, ['out.proGlitchSlices', 'out.glitch'], 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proAnimeImpact', cat: 'combo', name: 'Anime Impact · Аниме-удар', preview: 'flash',
+        desc: 'Stretch Snap → Speed Lines + Flash Hit + Shake Hit в момент появления → Halation → Stretch Snap Out.',
+        tags: 'anime impact manga speed lines flash shake аниме удар pro',
+        apply: function (c) {
+            var din = part(c, 1), t0 = startT(c);
+            inAt(c, ['in.proStretchSnap', 'in.squashStretch'], 1, { ease: 'back' });
+            fx(c, 'fx.proSpeedLines', weak(0.9 * c.strength));
+            atTime(c, 'fx.flashHit', t0 + din * 0.9, { dur: Math.min(0.25, din * 0.4) });
+            atTime(c, 'fx.shakeHit', t0 + din * 0.9, { dur: Math.min(0.4, din * 0.6), strength: 120 * c.strength });
+            fx(c, 'fx.proHalation', weak(0.5));
+            outAt(c, ['out.proStretchSnap', 'out.squashStretch'], 0.6, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.proMusicVisual', cat: 'combo', name: 'Music Visual · Музыкальный визуал', preview: 'kaleido',
+        desc: 'Pulse to Beat + Kaleidoscope + Chromatic + Strobe (слабый) + Glitch Slices In/Out. Ритмичная абстракция.',
+        tags: 'music visual beat kaleidoscope strobe rgb клип визуал pro',
+        apply: function (c) {
+            inAt(c, ['in.proGlitchSlices', 'in.glitch'], 0.7);
+            fx(c, 'fx.pulse', weak(0.8 * c.strength));
+            fx(c, 'fx.kaleidoscope', weak(0.6));
+            fx(c, 'fx.chromatic', weak(0.5));
+            fx(c, 'fx.strobe', weak(0.3 * c.strength));
+            outAt(c, ['out.proGlitchSlices', 'out.glitch'], 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proRetro80s', cat: 'combo', name: 'Retro 80s · Синтвейв', preview: 'rgb',
+        desc: 'Cyberpunk Neon + VHS Pro + CRT + Glitch Slices In/Out. Неон, кассета и кинескоп в одном.',
+        tags: 'retro 80s synthwave vhs crt neon синтвейв pro',
+        apply: function (c) {
+            inAt(c, ['in.proGlitchSlices', 'in.glitch'], 0.8);
+            fx(c, 'fx.cyberpunk', weak(0.7 * c.strength));
+            fx(c, 'fx.proVHS', weak(0.7));
+            fx(c, 'fx.proCRT', weak(0.5));
+            outAt(c, ['out.proGlitchSlices', 'out.glitch'], 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proTechHUD', cat: 'combo', name: 'Tech / HUD · Интерфейс', preview: 'glitch',
+        desc: 'Pixel Sort In → Glitch Texture + Scanlines + Cool-лук → углы рамки и сетка (дизайн, если доступно) → Blocks Out.',
+        tags: 'tech hud ui sci-fi grid corners glitch scanlines интерфейс pro',
+        apply: function (c) {
+            inAt(c, ['in.proPixelSort', 'in.proBlocks', 'in.pixelate'], 0.9);
+            fx(c, 'fx.proGlitchTexture', weak(0.5 * c.strength));
+            fx(c, 'fx.scanlines', weak(0.4));
+            fx(c, 'fx.cool', weak(0.6));
+            design(c, [D + 'frameCorners', D + 'recFrame']);
+            design(c, [D + 'dotsGrid', D + 'animatedGrid']);
+            outAt(c, ['out.proBlocks', 'out.pixelate'], 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proHorrorTrailer', cat: 'combo', name: 'Horror Trailer · Хоррор-трейлер', preview: 'strobe',
+        desc: 'Flicker In → Noir + Exposure Flicker + Dust + Gate Weave → Strobe-удар перед концом → Ink Hide (или Flicker Out).',
+        tags: 'horror trailer noir flicker strobe ink хоррор трейлер pro',
+        apply: function (c) {
+            var dout = part(c, 0.8), hit = Math.min(0.4, part(c, 0.4));
+            inAt(c, 'in.flicker', 0.8);
+            fx(c, 'fx.proNoir', weak(0.8 * c.strength));
+            fx(c, 'fx.proFlickerExposure', weak(0.9));
+            fx(c, 'fx.proDust', weak(0.6));
+            fx(c, 'fx.proGateWeave', weak(0.5));
+            atTime(c, 'light.flashHit', c.layer.outPoint - dout - hit - c.fd, { dur: hit, strength: 150 });
+            outAt(c, ['out.proInk', 'out.flicker'], 0.8);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proFashion', cat: 'combo', name: 'Fashion Editorial · Фэшн', preview: 'blinds',
+        desc: 'Slice Reveal → B&W Contrast + Film Grain + Opacity Flicker (как вспышки фотокамеры) → Slice Hide. Глянцевая съёмка.',
+        tags: 'fashion editorial bw contrast slices flash фэшн глянец pro',
+        apply: function (c) {
+            inAt(c, ['in.proSlice', 'in.blinds'], 0.9, { ease: 'expoOut' });
+            fx(c, 'fx.bwContrast', weak(0.9 * c.strength));
+            fx(c, 'fx.filmGrain', weak(0.5));
+            fx(c, 'fx.flicker', weak(0.35));
+            fx(c, 'fx.proSharpen', weak(0.6));
+            outAt(c, ['out.proSlice', 'out.blinds'], 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    // =========================================================== ПЕРЕХОДЫ PRO
+    UK.add({
+        id: 'combo.proCinematicCut', cat: 'combo', name: 'Cinematic Cut · Кино-склейка', preview: 'dissolve',
+        desc: 'Переход: Blur Fade + Light Leak на склейке, Kodak-лук и Vignette на входящем слое.',
+        tags: 'cinematic cut transition blur fade light leak kodak склейка pro', needs: 'trans',
+        apply: function (c) {
+            tr(c, ['trans.proLuma', 'trans.blurFade']);
+            tr(c, 'trans.lightLeak', weak(0.7 * c.strength));
+            onB(c, 'fx.proKodak', weak(0.5));
+            onB(c, 'fx.vignette', weak(0.4));
+        }
+    });
+
+    UK.add({
+        id: 'combo.proActionCut', cat: 'combo', name: 'Action Cut · Экшен-склейка', preview: 'whip',
+        desc: 'Переход: Whip Pan + RGB Split + Speed Lines на входящем + Shake Hit после склейки.',
+        tags: 'action cut whip pan rgb speed lines shake экшен склейка pro', needs: 'trans',
+        apply: function (c) {
+            tr(c, ['trans.proChromaWhip', 'trans.whipPan']);
+            tr(c, 'trans.rgbSplit', weak(0.6 * c.strength));
+            onB(c, 'fx.proSpeedLines', weak(0.5));
+            if (c.B) atTime(c, 'fx.shakeHit', c.cut, { dur: Math.min(0.4, c.half) }, c.B);
+        }
+    });
+
+    UK.add({
+        id: 'combo.proDreamCut', cat: 'combo', name: 'Dream Cut · Сон-склейка', preview: 'blurIn',
+        desc: 'Переход: Gaussian Blur Dissolve + Flash + Pro-Mist и Pastel на входящем.',
+        tags: 'dream cut soft blur flash mist pastel склейка сон pro', needs: 'trans',
+        apply: function (c) {
+            tr(c, ['trans.proMorphBlur', 'trans.gaussBlur']);
+            tr(c, 'trans.flash', weak(0.4 * c.strength));
+            onB(c, 'fx.proMist', weak(0.6));
+            onB(c, 'fx.proPastelDream', weak(0.4));
+        }
+    });
+
+    UK.add({
+        id: 'combo.proGlitchCutPro', cat: 'combo', name: 'Glitch Cut Pro · Цифровая склейка', preview: 'glitch',
+        desc: 'Переход: Glitch + Pixelate + Chromatic Zoom; Glitch Texture на входящем слое первые секунды.',
+        tags: 'glitch cut pro digital pixelate chroma склейка глитч pro', needs: 'trans',
+        apply: function (c) {
+            tr(c, ['trans.proPixelBlock', 'trans.glitch']);
+            tr(c, 'trans.pixelate', weak(0.5 * c.strength));
+            tr(c, 'trans.chromaZoom', weak(0.5));
+            onB(c, 'fx.proGlitchTexture', weak(0.4));
         }
     });
 

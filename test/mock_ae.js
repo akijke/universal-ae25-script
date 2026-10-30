@@ -107,6 +107,16 @@ class PropertyGroup {
     _auto(x) {
         const n = String(x);
         let t = V.OneD, val = 0;
+        // shape layer vector properties
+        if (/^ADBE Vector /.test(n)) {
+            if (/(Size|Position|Anchor|Scale|Start Pt|End Pt|Grad Start Pt|Grad End Pt|Rect Position|Ellipse Position|Star Position|Repeater Anchor|Repeater Position)$/.test(n) || /Scale$/.test(n)) { t = V.TwoD; val = [0, 0]; }
+            else if (/(Fill Color|Stroke Color)$/.test(n)) { t = V.COLOR; val = [1, 1, 1, 1]; }
+            else if (/Vector Shape$/.test(n)) { t = V.SHAPE; val = null; }
+            else if (/Grad Colors$/.test(n)) { t = V.CUSTOM_VALUE; val = null; }
+            const p = new Property(this, n, n, t, val);
+            this.children.push(p);
+            return p;
+        }
         if (/Color|Colour|Tint|Map Black|Map White|Highlights|Midtones|Shadows|Brights|Darktones/i.test(n) && !/Amount|Loop|Phase|Mode|Operation|Dimensions/i.test(n)) { t = V.COLOR; val = [1, 1, 1, 1]; }
         else if (/Center|Centre|Position|Point|Offset|Anchor|Corner|Pin|Knot|Start of|End of|Starting Point|Ending Point|Reflection Center|Shift Center|Wipe Center|Iris Center|View Center|Flare Center|Tile Center|Twirl Center|Bulge Center|Center of|Sweep/i.test(n) && !/Offset \(Turbulence\)|Percent Offset|Phase|Amount|Width|Height|Blend|Softness|Intensity|Direction|Shape|Edge|Thickness|Reception/i.test(n)) { t = V.TwoD; val = [0, 0]; }
         else if (/^ADBE Point Control-0001$/.test(n)) { t = V.TwoD; val = [0, 0]; }

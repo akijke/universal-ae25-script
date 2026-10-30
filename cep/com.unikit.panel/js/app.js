@@ -16,10 +16,11 @@
         text: '<svg class="ico" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>',
         cam: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>',
         util: '<svg class="ico" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>',
+        design: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><circle cx="17" cy="7" r="4"/><path d="M3 21l4-8 4 8z"/><rect x="13" y="13" width="8" height="8" rx="4" opacity=".6"/></svg>',
         combo: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 10l9-5 9 5-9 5z"/><path d="M3 15l9 5 9-5" opacity=".6"/><path d="M19 2l.8 1.7 1.7.3-1.3 1.2.3 1.8L19 6.1 17.5 7l.3-1.8-1.3-1.2 1.7-.3z" fill="currentColor" stroke="none"/></svg>',
         fav: '<svg class="ico" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z"/></svg>'
     };
-    var SHORT = { 'in': 'In', out: 'Out', trans: 'Переходы', fx: 'Эффекты', distort: 'Искажения', light: 'Свет', text: 'Текст', cam: 'Камера', util: 'Утилиты', combo: 'Решения', fav: 'Избранное' };
+    var SHORT = { 'in': 'In', out: 'Out', trans: 'Переходы', fx: 'Эффекты', distort: 'Искажения', light: 'Свет', text: 'Текст', cam: 'Камера', design: 'Дизайн', util: 'Утилиты', combo: 'Решения', fav: 'Избранное' };
     var EASE_PATHS = {
         smooth: 'M3 19C9 19 9 5 21 5', expoOut: 'M3 19C4 7 8 5 21 5', expoIn: 'M3 19C16 19 20 17 21 5', expoInOut: 'M3 19C12 19 12 5 21 5',
         soft: 'M3 19C8 19 10 5 21 5', back: 'M3 19C8 19 10 1 14 3 17 5 19 5 21 5', bounce: 'M3 19C7 19 9 5 11 5 13 5 14 12 16 12 18 12 19 8 21 8',
