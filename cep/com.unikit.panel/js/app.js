@@ -7,30 +7,27 @@
 
     // ------------------------------------------------------------ иконки категорий
     var ICONS = {
-        'in': '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 12h10M9 8l4 4-4 4"/></svg>',
-        out: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M8 12h13M17 8l4 4-4 4"/></svg>',
-        trans: '<svg class="ico" viewBox="0 0 24 24"><rect x="2" y="7" width="8" height="10" rx="1.5"/><rect x="14" y="7" width="8" height="10" rx="1.5"/><path d="M10 12h4M12.5 10l1.5 2-1.5 2"/></svg>',
-        fx: '<svg class="ico" viewBox="0 0 24 24"><path d="M4 20l9-9M11 11l2 2"/><path d="M15 3v3M14 4.5h2M19 8v2M18 9h2M18 14v2M17 15h2"/><path d="M14 8l1.5 1.5"/></svg>',
+        'in': '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14"/><path d="M3 12h10M9 8l4 4-4 4"/></svg>',
+        out: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14"/><path d="M8 12h13M17 8l4 4-4 4"/></svg>',
+        trans: '<svg class="ico" viewBox="0 0 24 24"><rect x="2" y="7" width="8" height="10"/><rect x="14" y="7" width="8" height="10"/><path d="M10 12h4M12.5 10l1.5 2-1.5 2"/></svg>',
+        fx: '<svg class="ico" viewBox="0 0 24 24"><path d="M4 20l9-9M11 11l2 2"/><path d="M15 3v3M14 4.5h2M19 8v2M18 9h2M18 14v2M17 15h2"/></svg>',
         distort: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 7c3-3 6 3 9 0s6 3 9 0M3 12c3-3 6 3 9 0s6 3 9 0M3 17c3-3 6 3 9 0s6 3 9 0"/></svg>',
         light: '<svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg>',
         text: '<svg class="ico" viewBox="0 0 24 24"><path d="M5 6V4h14v2M12 4v16M9 20h6"/></svg>',
-        cam: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3z"/></svg>',
+        cam: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10"/><path d="M16 11l5-3v8l-5-3z"/></svg>',
         util: '<svg class="ico" viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L4 17v3h3l5.3-5.3a4 4 0 0 0 5.4-5.4l-2.4 2.4-2.3-.4-.4-2.3z"/></svg>',
-        design: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><circle cx="17" cy="7" r="4"/><path d="M3 21l4-8 4 8z"/><rect x="13" y="13" width="8" height="8" rx="4" opacity=".6"/></svg>',
-        combo: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 10l9-5 9 5-9 5z"/><path d="M3 15l9 5 9-5" opacity=".6"/><path d="M19 2l.8 1.7 1.7.3-1.3 1.2.3 1.8L19 6.1 17.5 7l.3-1.8-1.3-1.2 1.7-.3z" fill="currentColor" stroke="none"/></svg>',
+        design: '<svg class="ico" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8"/><circle cx="17" cy="7" r="4"/><path d="M3 21l4-8 4 8z"/><rect x="13" y="13" width="8" height="8"/></svg>',
+        combo: '<svg class="ico" viewBox="0 0 24 24"><path d="M3 10l9-5 9 5-9 5z"/><path d="M3 15l9 5 9-5"/></svg>',
         fav: '<svg class="ico" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z"/></svg>'
     };
     var SHORT = { 'in': 'In', out: 'Out', trans: 'Переходы', fx: 'Эффекты', distort: 'Искажения', light: 'Свет', text: 'Текст', cam: 'Камера', design: 'Дизайн', util: 'Утилиты', combo: 'Решения', fav: 'Избранное' };
-    var EASE_PATHS = {
-        smooth: 'M3 19C9 19 9 5 21 5', expoOut: 'M3 19C4 7 8 5 21 5', expoIn: 'M3 19C16 19 20 17 21 5', expoInOut: 'M3 19C12 19 12 5 21 5',
-        soft: 'M3 19C8 19 10 5 21 5', back: 'M3 19C8 19 10 1 14 3 17 5 19 5 21 5', bounce: 'M3 19C7 19 9 5 11 5 13 5 14 12 16 12 18 12 19 8 21 8',
-        elastic: 'M3 19C6 19 7 1 10 3 12 5 13 8 15 7 17 6 18 5 21 5', linear: 'M3 19L21 5'
-    };
 
     // ------------------------------------------------------------ состояние
     var S = {
         catalog: null, cat: 'in', query: '', selected: null, favs: {}, previewActive: false, busy: false,
-        opts: { dur: 0.8, ease: 'expoOut', strength: 100, dir: 'L', startMode: 'in', stagger: 0.1, controls: true, adj: false }
+        // mode: 'curve' | 'back' | 'bounce' | 'elastic'; curveId — id из библиотеки или 'custom'
+        mode: 'curve', curveId: 'expoOut',
+        opts: { dur: 0.8, ease: 'expoOut', strength: 100, dir: 'L', startMode: 'in', stagger: 0.1, controls: true, adj: false, bez: [0.19, 1, 0.22, 1] }
     };
     var LS = {
         get: function (k, d) { try { var v = localStorage.getItem('uk.' + k); return v === null ? d : v; } catch (e) { return d; } },
@@ -74,21 +71,20 @@
         else if (fn === 'toggleFavJSON') { var id = JSON.parse(expr.match(/\((.*)\)$/)[1]); S.favs[id] = !S.favs[id]; r = { fav: !!S.favs[id], favs: Object.keys(S.favs).filter(function (k) { return S.favs[k]; }) }; }
         else if (fn === 'previewJSON') r = { ok: true, active: true };
         else if (fn === 'previewUndoJSON') r = { ok: true, undone: true };
-        else if (fn === 'cleanJSON') r = { ok: true, removed: 3 };
+        else if (fn === 'resetJSON') r = { ok: true, changes: 4, removedLayers: 1 };
+        else if (fn === 'applyEaseKeysJSON') r = { ok: true, pairs: 2 };
+        else if (fn === 'undoJSON' || fn === 'redoJSON') r = { ok: true };
         setTimeout(function () { cb(r); }, 120);
     }
 
-    // ------------------------------------------------------------ рендер вкладок
+    // ------------------------------------------------------------ вкладки
     function renderTabs() {
         var el = $('tabs'); el.innerHTML = '';
-        var counts = {};
-        S.catalog.presets.forEach(function (p) { counts[p.cat] = (counts[p.cat] || 0) + 1; });
         S.catalog.cats.forEach(function (c) {
             var b = document.createElement('button');
             b.className = 'tab' + (c.id === S.cat ? ' active' : '');
             b.type = 'button'; b.dataset.cat = c.id; b.title = c.name;
-            var n = c.id === 'fav' ? Object.keys(S.favs).filter(function (k) { return S.favs[k]; }).length : counts[c.id] || 0;
-            b.innerHTML = (ICONS[c.id] || ICONS.fx) + '<span>' + (SHORT[c.id] || c.name) + '</span>' + (n ? '<em class="count">' + n + '</em>' : '');
+            b.innerHTML = (ICONS[c.id] || ICONS.fx) + '<span>' + (SHORT[c.id] || c.name) + '</span>';
             b.addEventListener('click', function () { setCat(c.id); });
             el.appendChild(b);
         });
@@ -97,10 +93,10 @@
         S.cat = id; LS.set('cat', id);
         $('search').value = ''; S.query = ''; $('searchClear').classList.add('hidden');
         renderTabs(); renderGrid();
-        var t = document.querySelector('.tab.active'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+        var t = document.querySelector('.tab.active'); if (t && t.scrollIntoView) t.scrollIntoView({ block: 'nearest', inline: 'center' });
     }
 
-    // ------------------------------------------------------------ рендер сетки
+    // ------------------------------------------------------------ сетка
     function filtered() {
         var q = S.query.trim().toLowerCase();
         return S.catalog.presets.filter(function (p) {
@@ -115,24 +111,23 @@
         var tpl = $('tplCard');
         if (!list.length) {
             var e = document.createElement('div'); e.className = 'empty';
-            e.innerHTML = (S.cat === 'fav' && !S.query ? ICONS.fav + '<b>Пока пусто</b>Отмечайте пресеты звёздочкой — они появятся здесь.' :
-                '<svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5M8 11h6"/></svg><b>Ничего не найдено</b>Попробуйте другое слово: «glitch», «zoom», «текст»…');
+            e.innerHTML = (S.cat === 'fav' && !S.query ? ICONS.fav + '<b>Избранное пусто</b>Отмечайте пресеты звёздочкой.' :
+                '<svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5M8 11h6"/></svg><b>Ничего не найдено</b>Попробуйте другое слово: glitch, zoom, текст.');
             grid.appendChild(e);
             select(null);
             return;
         }
         var frag = document.createDocumentFragment();
-        list.forEach(function (p, i) {
+        list.forEach(function (p) {
             var node = tpl.content.firstElementChild.cloneNode(true);
-            node.dataset.id = p.id; node.style.setProperty('--i', Math.min(i, 30));
+            node.dataset.id = p.id;
             node.querySelector('.pv').dataset.preview = p.preview || 'fadeIn';
             node.querySelector('.name').textContent = p.name;
-            node.title = p.desc || p.name;
+            node.title = (S.query && S.cat !== p.cat ? catName(p.cat) + ' · ' : '') + (p.desc || p.name);
             var star = node.querySelector('.star'); if (S.favs[p.id]) star.classList.add('on');
             var badge = node.querySelector('.badge');
-            if (p.needs === 'text') { badge.textContent = 'T'; badge.className = 'badge show text'; badge.title = 'Текстовый слой'; }
-            else if (p.needs === 'trans') { badge.textContent = 'A→B'; badge.className = 'badge show trans'; badge.title = 'Переход: 2 слоя или курсор на склейке'; }
-            if (S.query && S.cat !== p.cat) { var c = catName(p.cat); node.querySelector('.name').textContent = p.name; node.title = c + ' · ' + (p.desc || ''); }
+            if (p.needs === 'text') { badge.textContent = 'T'; badge.className = 'badge show'; badge.title = 'Текстовый слой'; }
+            else if (p.needs === 'trans') { badge.textContent = 'A→B'; badge.className = 'badge show'; badge.title = 'Переход: 2 слоя или курсор на склейке'; }
             if (S.selected && S.selected.id === p.id) node.classList.add('selected');
             node.addEventListener('click', function (ev) { if (ev.target.closest('.star')) return; select(p, node); });
             node.addEventListener('dblclick', function (ev) { if (ev.target.closest('.star')) return; select(p, node); apply(); });
@@ -171,39 +166,41 @@
             S.favs[id] = !!r.fav;
             Array.prototype.forEach.call(document.querySelectorAll('.card[data-id="' + CSS.escape(id) + '"] .star'), function (s) { s.classList.toggle('on', !!r.fav); });
             if (S.selected && S.selected.id === id) $('infoFav').classList.toggle('on', !!r.fav);
-            renderTabs();
             if (S.cat === 'fav') renderGrid();
-            toast(r.fav ? 'Добавлено в избранное' : 'Убрано из избранного', 'info', 1200);
         });
     }
 
     // ------------------------------------------------------------ настройки
     function initSettings() {
         var st = S.catalog.settings || {};
-        S.opts.dur = num(st.dur, 0.8); S.opts.ease = st.ease || 'expoOut'; S.opts.strength = num(st.strength, 100);
+        S.opts.dur = num(st.dur, 0.8); S.opts.strength = num(st.strength, 100);
         S.opts.dir = st.dir || 'L'; S.opts.startMode = st.startMode || 'in'; S.opts.stagger = num(st.stagger, 0.1);
         S.opts.controls = String(st.controls) !== 'false'; S.opts.adj = String(st.adj) === 'true';
 
-        var sel = $('optEase'); sel.innerHTML = '';
-        S.catalog.eases.forEach(function (e) { var o = document.createElement('option'); o.value = e.id; o.textContent = e.name; sel.appendChild(o); });
-        sel.value = S.opts.ease;
-        sel.addEventListener('change', function () { S.opts.ease = sel.value; syncSettings(); });
+        // изинг: восстановить режим/кривую
+        var ease = st.ease || 'expoOut';
+        var bez = parseBez(LS.get('bez', st.bez || '[0.19,1,0.22,1]'));
+        if (ease === 'back' || ease === 'bounce' || ease === 'elastic') { S.mode = ease; }
+        else { S.mode = 'curve'; }
+        var lib = curveById(ease);
+        if (ease === 'custom' || !lib) { S.curveId = 'custom'; if (!bez) bez = [0.19, 1, 0.22, 1]; }
+        else { S.curveId = lib.id; bez = lib.bez.slice(); }
+        // старые ease-id (smooth, soft, expoIn...) без кривой в библиотеке → ближайшая кривая
+        if (!lib && ease !== 'custom' && S.mode === 'curve') { var mapOld = { smooth: 'easeInOut', soft: 'cubicOut', expoOut: 'expoOut', expoIn: 'expoIn', expoInOut: 'expoInOut', linear: 'linear' }; var c2 = curveById(mapOld[ease] || 'expoOut'); if (c2) { S.curveId = c2.id; bez = c2.bez.slice(); } }
+        S.opts.bez = bez;
 
-        $('optDur').value = S.opts.dur;
-        $('optDur').addEventListener('input', function () { S.opts.dur = clamp(num(this.value, 0.8), 0.05, 20); syncSettings(); });
+        bind('optDur', 'optDurR', function (v) { S.opts.dur = clamp(v, 0.05, 20); }, 0.8);
         Array.prototype.forEach.call($('durChips').querySelectorAll('button'), function (b) {
-            b.addEventListener('click', function () { S.opts.dur = num(b.dataset.v, 0.8); $('optDur').value = S.opts.dur; syncSettings(); });
+            b.addEventListener('click', function () { S.opts.dur = num(b.dataset.v, 0.8); syncSettings(); });
         });
+        bind('optStrN', 'optStr', function (v) { S.opts.strength = clamp(v, 0, 1000); }, 100);
+        bind('optStag', 'optStagR', function (v) { S.opts.stagger = clamp(v, 0, 5); }, 0.1);
         Array.prototype.forEach.call($('optDir').querySelectorAll('button'), function (b) {
             b.addEventListener('click', function () { S.opts.dir = b.dataset.v; syncSettings(); });
         });
         Array.prototype.forEach.call($('optStart').querySelectorAll('button'), function (b) {
             b.addEventListener('click', function () { S.opts.startMode = b.dataset.v; syncSettings(); });
         });
-        $('optStr').value = S.opts.strength;
-        $('optStr').addEventListener('input', function () { S.opts.strength = num(this.value, 100); syncSettings(); });
-        $('optStag').value = S.opts.stagger;
-        $('optStag').addEventListener('input', function () { S.opts.stagger = clamp(num(this.value, 0.1), 0, 5); syncSettings(); });
         $('optControls').checked = S.opts.controls;
         $('optControls').addEventListener('change', function () { S.opts.controls = this.checked; syncSettings(); });
         $('optAdj').checked = S.opts.adj;
@@ -214,24 +211,161 @@
         $('settingsToggle').addEventListener('click', function () {
             var c = !$('settings').classList.contains('collapsed');
             $('settings').classList.toggle('collapsed', c); LS.set('settingsCollapsed', c ? '1' : '0');
+            if (!c) drawGraph();
         });
+        initEase();
         syncSettings();
     }
-    function syncSettings() {
+    /** связать number-поле и range: оба меняют значение через setter */
+    function bind(numId, rangeId, setter, def) {
+        var n = $(numId), r = $(rangeId);
+        n.addEventListener('input', function () { setter(num(this.value, def)); syncSettings(numId); });
+        n.addEventListener('change', function () { syncSettings(); });
+        r.addEventListener('input', function () { setter(num(this.value, def)); syncSettings(); });
+    }
+    function syncSettings(skipId) {
         var o = S.opts;
+        if (skipId !== 'optDur') $('optDur').value = fmt(o.dur);
+        $('optDurR').value = clamp(o.dur, 0.1, 3); setPct($('optDurR'));
+        if (skipId !== 'optStrN') $('optStrN').value = Math.round(o.strength);
+        $('optStr').value = clamp(o.strength, 0, 300); setPct($('optStr'));
+        if (skipId !== 'optStag') $('optStag').value = fmt(o.stagger);
+        $('optStagR').value = clamp(o.stagger, 0, 0.5); setPct($('optStagR'));
         Array.prototype.forEach.call($('durChips').querySelectorAll('button'), function (b) { b.classList.toggle('on', Math.abs(num(b.dataset.v, -1) - o.dur) < 1e-9); });
         Array.prototype.forEach.call($('optDir').querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.v === o.dir); });
+        $('dirLabel').textContent = { L: '←', R: '→', U: '↑', D: '↓' }[o.dir] || '';
         Array.prototype.forEach.call($('optStart').querySelectorAll('button'), function (b) { b.classList.toggle('on', b.dataset.v === o.startMode); });
-        $('optStrOut').value = Math.round(o.strength) + '%';
-        $('optStr').style.setProperty('--pct', (o.strength / 3) + '%');
-        var path = EASE_PATHS[o.ease] || EASE_PATHS.smooth;
-        $('easeIcon').innerHTML = '<path d="' + path + '"/>';
-        var easeName = (S.catalog.eases.filter(function (e) { return e.id === o.ease; })[0] || {}).name || o.ease;
-        var dirName = { L: '←', R: '→', U: '↑', D: '↓' }[o.dir] || o.dir;
-        $('settingsSummary').textContent = o.dur + 'с · ' + easeName.split(' ')[0] + ' · ' + dirName + ' · ' + Math.round(o.strength) + '%';
+        // изинг → opts.ease
+        if (S.mode === 'curve') o.ease = S.curveId === 'custom' ? 'custom' : S.curveId; else o.ease = S.mode;
+        LS.set('bez', JSON.stringify(o.bez));
+        var easeName = S.mode === 'curve' ? (S.curveId === 'custom' ? 'Custom' : (curveById(S.curveId) || {}).name || S.curveId) : ({ back: 'Back', bounce: 'Bounce', elastic: 'Elastic' })[S.mode];
+        $('easeName').textContent = easeName;
+        $('summaryText').textContent = fmt(o.dur) + ' с · ' + Math.round(o.strength) + '% · ' + ($('dirLabel').textContent) + ' · ' + easeName;
+        $('summaryCurve').innerHTML = '<rect class="box" x="2" y="2" width="20" height="20"/>' + miniPath(o.bez, 2, 2, 20);
+        syncEaseUI();
     }
+    function setPct(r) { var mn = num(r.min, 0), mx = num(r.max, 1), v = num(r.value, mn); r.style.setProperty('--pct', ((v - mn) / (mx - mn) * 100) + '%'); }
     function num(v, d) { var n = parseFloat(v); return isFinite(n) ? n : d; }
     function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+    function fmt(v) { return String(Math.round(v * 100) / 100); }
+    function parseBez(s) { try { var a = typeof s === 'string' ? JSON.parse(s) : s; if (Array.isArray(a) && a.length === 4 && a.every(function (x) { return isFinite(x); })) return a.map(Number); } catch (e) {} return null; }
+    function curveById(id) { return (S.catalog.curves || []).filter(function (c) { return c.id === id; })[0] || null; }
+
+    // ------------------------------------------------------------ ease editor
+    var G = { pad: 14, size: 200, yMin: -0.5, yMax: 1.5, drag: null };
+    function gx(x) { return G.pad + x * (G.size - 2 * G.pad); }
+    function gy(y) { var h = G.size - 2 * G.pad; return G.pad + (G.yMax - y) / (G.yMax - G.yMin) * h; }
+    function ix(px) { return (px - G.pad) / (G.size - 2 * G.pad); }
+    function iy(py) { var h = G.size - 2 * G.pad; return G.yMax - (py - G.pad) / h * (G.yMax - G.yMin); }
+    function miniPath(b, x0, y0, s) {
+        // мини-кривая в квадрате s×s с запасом по Y (overshoot обрезается рамкой)
+        function X(x) { return x0 + x * s; } function Y(y) { return y0 + (1 - y) * s; }
+        return '<path d="M' + X(0) + ' ' + Y(0) + 'C' + X(b[0]) + ' ' + Y(b[1]) + ' ' + X(b[2]) + ' ' + Y(b[3]) + ' ' + X(1) + ' ' + Y(1) + '"/>';
+    }
+    function drawGraph() {
+        var svg = $('easeGraph'), b = S.opts.bez, s = '';
+        var x0 = gx(0), x1 = gx(1), y0 = gy(0), y1 = gy(1);
+        // сетка
+        for (var i = 1; i < 4; i++) { var t = i / 4; s += '<line class="g" x1="' + gx(t) + '" y1="' + G.pad + '" x2="' + gx(t) + '" y2="' + (G.size - G.pad) + '"/>'; s += '<line class="g" x1="' + G.pad + '" y1="' + gy(t) + '" x2="' + (G.size - G.pad) + '" y2="' + gy(t) + '"/>'; }
+        s += '<line class="g" x1="' + G.pad + '" y1="' + gy(-0.25) + '" x2="' + (G.size - G.pad) + '" y2="' + gy(-0.25) + '"/>';
+        s += '<line class="g" x1="' + G.pad + '" y1="' + gy(1.25) + '" x2="' + (G.size - G.pad) + '" y2="' + gy(1.25) + '"/>';
+        s += '<rect class="box" x="' + x0 + '" y="' + y1 + '" width="' + (x1 - x0) + '" height="' + (y0 - y1) + '"/>';
+        s += '<line class="diag" x1="' + x0 + '" y1="' + y0 + '" x2="' + x1 + '" y2="' + y1 + '"/>';
+        s += '<text x="' + (x0 + 2) + '" y="' + (y0 + 9) + '">0</text><text x="' + (x1 - 6) + '" y="' + (y1 - 3) + '">1</text>';
+        // кривая
+        s += '<path class="curve" d="M' + x0 + ' ' + y0 + 'C' + gx(b[0]) + ' ' + gy(b[1]) + ' ' + gx(b[2]) + ' ' + gy(b[3]) + ' ' + x1 + ' ' + y1 + '"/>';
+        // ручки
+        s += '<line class="hl" x1="' + x0 + '" y1="' + y0 + '" x2="' + gx(b[0]) + '" y2="' + gy(b[1]) + '"/>';
+        s += '<line class="hl" x1="' + x1 + '" y1="' + y1 + '" x2="' + gx(b[2]) + '" y2="' + gy(b[3]) + '"/>';
+        s += '<circle class="ep" cx="' + x0 + '" cy="' + y0 + '" r="3"/><circle class="ep" cx="' + x1 + '" cy="' + y1 + '" r="3"/>';
+        s += '<circle class="hp' + (G.drag === 1 ? ' drag' : '') + '" data-h="1" cx="' + gx(b[0]) + '" cy="' + gy(b[1]) + '" r="5.5"/>';
+        s += '<circle class="hp' + (G.drag === 2 ? ' drag' : '') + '" data-h="2" cx="' + gx(b[2]) + '" cy="' + gy(b[3]) + '" r="5.5"/>';
+        svg.innerHTML = s;
+    }
+    function svgPoint(svg, ev) {
+        var r = svg.getBoundingClientRect();
+        // viewBox 200×200 вписан в прямоугольник (xMidYMid meet)
+        var sc = Math.min(r.width, r.height) / G.size;
+        var ox = (r.width - G.size * sc) / 2, oy = (r.height - G.size * sc) / 2;
+        return { x: (ev.clientX - r.left - ox) / sc, y: (ev.clientY - r.top - oy) / sc };
+    }
+    function setBez(b, fromLib) {
+        S.opts.bez = [round2(clamp(b[0], 0, 1)), round2(clamp(b[1], G.yMin, G.yMax)), round2(clamp(b[2], 0, 1)), round2(clamp(b[3], G.yMin, G.yMax))];
+        if (!fromLib) {
+            // совпадает ли с кривой библиотеки
+            var hit = (S.catalog.curves || []).filter(function (c) { return c.bez.every(function (v, i) { return Math.abs(v - S.opts.bez[i]) < 0.006; }); })[0];
+            S.curveId = hit ? hit.id : 'custom';
+        }
+        if (S.mode !== 'curve') S.mode = 'curve';
+        syncSettings();
+    }
+    function round2(v) { return Math.round(v * 1000) / 1000; }
+    function initEase() {
+        var svg = $('easeGraph');
+        // библиотека
+        var lib = $('easeLib'); lib.innerHTML = '';
+        (S.catalog.curves || []).forEach(function (c) {
+            var b = document.createElement('button'); b.type = 'button'; b.dataset.id = c.id; b.title = c.name + '  [' + c.bez.join(', ') + ']';
+            b.innerHTML = '<svg viewBox="0 0 24 24"><rect class="b" x="2" y="2" width="20" height="20"/>' + miniPath(c.bez, 2, 2, 20) + '</svg>';
+            b.addEventListener('click', function () { S.curveId = c.id; S.mode = 'curve'; setBez(c.bez.slice(), true); });
+            lib.appendChild(b);
+        });
+        // режимы
+        Array.prototype.forEach.call($('easeMode').querySelectorAll('button'), function (b) {
+            b.addEventListener('click', function () { S.mode = b.dataset.m; syncSettings(); });
+        });
+        // числовые поля
+        ['bx1', 'by1', 'bx2', 'by2'].forEach(function (id, i) {
+            $(id).addEventListener('input', function () { var b = S.opts.bez.slice(); var v = parseFloat(this.value); if (!isFinite(v)) return; b[i] = v; setBez(b); });
+        });
+        $('bezFlip').addEventListener('click', function () { var b = S.opts.bez; setBez([1 - b[2], 1 - b[3], 1 - b[0], 1 - b[1]]); });
+        // перетаскивание ручек
+        svg.addEventListener('pointerdown', function (ev) {
+            var h = ev.target.getAttribute && ev.target.getAttribute('data-h');
+            if (!h) {
+                // клик мимо ручки — захватываем ближайшую
+                var p = svgPoint(svg, ev), b = S.opts.bez;
+                var d1 = Math.hypot(p.x - gx(b[0]), p.y - gy(b[1])), d2 = Math.hypot(p.x - gx(b[2]), p.y - gy(b[3]));
+                h = d1 <= d2 ? '1' : '2';
+            }
+            G.drag = Number(h); svg.setPointerCapture(ev.pointerId); ev.preventDefault();
+            drawGraph();
+        });
+        svg.addEventListener('pointermove', function (ev) {
+            if (!G.drag) return;
+            var p = svgPoint(svg, ev), b = S.opts.bez.slice();
+            var x = clamp(ix(p.x), 0, 1), y = clamp(iy(p.y), G.yMin, G.yMax);
+            if (ev.shiftKey) y = Math.round(y * 20) / 20, x = Math.round(x * 20) / 20;
+            if (G.drag === 1) { b[0] = x; b[1] = y; } else { b[2] = x; b[3] = y; }
+            setBez(b);
+        });
+        var end = function (ev) { if (!G.drag) return; G.drag = null; try { svg.releasePointerCapture(ev.pointerId); } catch (e) {} drawGraph(); };
+        svg.addEventListener('pointerup', end); svg.addEventListener('pointercancel', end);
+        svg.addEventListener('dblclick', function () { var c = curveById('ease'); if (c) { S.curveId = c.id; setBez(c.bez.slice(), true); } });
+        $('btnEaseKeys').addEventListener('click', applyEaseToKeys);
+    }
+    function syncEaseUI() {
+        var b = S.opts.bez;
+        Array.prototype.forEach.call($('easeMode').querySelectorAll('button'), function (x) { x.classList.toggle('on', x.dataset.m === S.mode); });
+        Array.prototype.forEach.call($('easeLib').querySelectorAll('button'), function (x) { x.classList.toggle('on', S.mode === 'curve' && x.dataset.id === S.curveId); });
+        var ids = ['bx1', 'by1', 'bx2', 'by2'];
+        ids.forEach(function (id, i) { var el = $(id); if (document.activeElement !== el) el.value = b[i]; el.disabled = S.mode !== 'curve'; });
+        $('easeGraph').classList.toggle('dis', S.mode !== 'curve');
+        $('bezFlip').disabled = S.mode !== 'curve';
+        $('easeHint').textContent = S.mode === 'curve'
+            ? 'cubic-bezier(' + b.join(', ') + ')  ·  Shift — шаг 0.05, dbl-click — сброс'
+            : 'Выражение поверх ключей; амплитуда — слайдеры UK: Amp / Freq / Decay';
+        if (!$('settings').classList.contains('collapsed')) drawGraph();
+    }
+    function applyEaseToKeys() {
+        if (S.busy) return;
+        var btn = $('btnEaseKeys'); setBusy(btn, true);
+        ukCall('applyEaseKeysJSON', [JSON.stringify(S.opts.bez)], function (r, err) {
+            setBusy(btn, false);
+            if (!r) { toast(err || 'Нет ответа от After Effects', 'err'); return; }
+            if (r.ok) toast('Кривая применена: пар ключей — ' + r.pairs, 'ok', 1800); else toast(r.error || 'Ошибка', 'err', 5000);
+        });
+    }
 
     // ------------------------------------------------------------ действия
     function setBusy(btn, on) { btn.classList.toggle('busy', on); S.busy = on; }
@@ -243,7 +377,7 @@
             ukCall('runJSON', [p.id, S.opts], function (r, err) {
                 setBusy(btn, false);
                 if (!r) { toast(err || 'Нет ответа от After Effects', 'err'); return; }
-                if (r.ok) toast('Применено: ' + p.name, 'ok', 1800); else toast(r.error || 'Ошибка', 'err', 6000);
+                if (r.ok) toast('Применено: ' + p.name, 'ok', 1600); else toast(r.error || 'Ошибка', 'err', 6000);
                 pollSelection();
             });
         };
@@ -259,7 +393,7 @@
                 if (!r) { toast(err || 'Нет ответа', 'err'); return; }
                 if (!r.ok) { toast(r.error || 'Ошибка превью', 'err', 6000); return; }
                 S.previewActive = true; updatePreviewButtons();
-                toast('Предпросмотр: ' + p.name + '\nОставить результат или отменить?', 'info', 3500);
+                toast('Предпросмотр: ' + p.name + '. Оставить или отменить?', 'info', 3000);
             });
         };
         if (S.previewActive) previewUndo(run); else run();
@@ -269,40 +403,64 @@
             S.previewActive = false; updatePreviewButtons();
             if (!r) toast(err || 'Нет ответа', 'err');
             else if (!r.ok) toast(r.error || 'Не удалось отменить', 'err');
-            else if (r.undone && !next) toast('Предпросмотр отменён', 'info', 1400);
+            else if (r.undone && !next) toast('Предпросмотр отменён', 'info', 1200);
             if (next) next();
         });
     }
     function previewKeep() {
-        ukCall('previewKeepJSON', [], function () { S.previewActive = false; updatePreviewButtons(); toast('Результат оставлен', 'ok', 1400); });
+        ukCall('previewKeepJSON', [], function () { S.previewActive = false; updatePreviewButtons(); toast('Результат оставлен', 'ok', 1200); });
     }
     function updatePreviewButtons() {
         $('btnKeep').classList.toggle('hidden', !S.previewActive);
-        $('btnUndo').classList.toggle('hidden', !S.previewActive);
+        $('btnPvUndo').classList.toggle('hidden', !S.previewActive);
         $('btnPreview').classList.toggle('hidden', S.previewActive);
     }
-    function clean() {
+    function undo() {
         if (S.busy) return;
-        toast('Удалить все эффекты UniKit с выделенных слоёв?', 'info', 6000, { label: 'Удалить', fn: function () {
-            ukCall('cleanJSON', [], function (r, err) {
+        S.previewActive = false; updatePreviewButtons();
+        ukCall('undoJSON', [], function (r, err) {
+            if (!r) { toast(err || 'Нет ответа', 'err'); return; }
+            if (r.ok) toast('Отменено', 'info', 900); else toast(r.error || 'Ошибка', 'err');
+            pollSelection();
+        });
+    }
+    function redo() {
+        if (S.busy) return;
+        ukCall('redoJSON', [], function (r, err) {
+            if (!r) { toast(err || 'Нет ответа', 'err'); return; }
+            if (r.ok) toast('Повторено', 'info', 900); else toast(r.error || 'Ошибка', 'err');
+            pollSelection();
+        });
+    }
+    function resetLayer() {
+        if (S.busy) return;
+        if (lastSel.comp && lastSel.count === 0) { toast('Выделите слой для сброса', 'err', 2500); return; }
+        toast('Снять все изменения UniKit с выделенных слоёв? Эффекты, контролы, аниматоры, маски UK, ключи и выражения Transform будут удалены.', 'info', 8000, { label: 'Сбросить', fn: function () {
+            ukCall('resetJSON', [], function (r, err) {
                 if (!r) { toast(err || 'Нет ответа', 'err'); return; }
-                if (r.ok) toast('Удалено эффектов: ' + r.removed, 'ok', 1800); else toast(r.error || 'Ошибка', 'err');
+                if (!r.ok) { toast(r.error || 'Ошибка', 'err'); return; }
+                S.previewActive = false; updatePreviewButtons();
+                var msg = 'Сброшено: изменений — ' + r.changes;
+                if (r.removedLayers) msg += ', удалено слоёв UK — ' + r.removedLayers;
+                toast(msg, 'ok', 2500);
+                pollSelection();
             });
         } });
     }
 
     // ------------------------------------------------------------ обновление из GitHub
+    function buildLabel() { var c = S.catalog || {}; return 'v' + (c.version || '?') + (c.build ? ' · ' + c.build : ''); }
     function updateKit() {
-        if (DEV) { toast('Обновление доступно только внутри After Effects', 'info', 2500); return; }
+        if (DEV) { toast('Обновление доступно только внутри After Effects. Текущая сборка: ' + buildLabel(), 'info', 3000); return; }
         var ext = CEP.getSystemPath('extension');
         var repo = CEP.readFile(ext + '/repo_path.txt');
         if (!repo) { toast('Не найден путь к репозиторию. Переустановите панель через install.bat из папки проекта.', 'err', 7000); return; }
         repo = repo.replace(/[\r\n]+$/, '').replace(/[\\\/]+$/, '');
         var bat = repo + '\\update.bat';
-        toast('Запустить обновление UniKit из GitHub?\nОткроется окно консоли; после завершения перезапустите AE.', 'info', 8000, { label: 'Обновить', fn: function () {
+        toast('Обновить UniKit из GitHub? Текущая сборка: ' + buildLabel() + '. Откроется окно консоли; после завершения перезапустите AE.', 'info', 9000, { label: 'Обновить', fn: function () {
             var ok = CEP.run('C:\\Windows\\System32\\cmd.exe', ['/c', 'start', 'UniKit update', bat]);
-            if (ok) toast('Обновление запущено в отдельном окне. После завершения перезапустите After Effects.', 'ok', 6000);
-            else toast('Не удалось запустить update.bat. Запустите его вручную из папки проекта: ' + bat, 'err', 9000);
+            if (ok) toast('Обновление запущено в отдельном окне. После завершения перезапустите After Effects и сверьте сборку в статус-баре (сейчас ' + buildLabel() + ').', 'ok', 8000);
+            else toast('Не удалось запустить update.bat. Запустите вручную: ' + bat, 'err', 9000);
         } });
     }
 
@@ -339,7 +497,7 @@
         if (action) { var b = document.createElement('button'); b.className = 'act'; b.textContent = action.label; b.addEventListener('click', function () { action.fn(); kill(); }); t.appendChild(b); }
         box.appendChild(t);
         var dead = false;
-        function kill() { if (dead) return; dead = true; t.classList.add('out'); setTimeout(function () { t.remove(); }, 260); }
+        function kill() { if (dead) return; dead = true; t.classList.add('out'); setTimeout(function () { t.remove(); }, 160); }
         t.addEventListener('click', function (ev) { if (!ev.target.closest('.act')) kill(); });
         setTimeout(kill, ms || 2500);
         while (box.children.length > 4) box.firstChild.remove();
@@ -349,13 +507,15 @@
     function initKeys() {
         document.addEventListener('keydown', function (ev) {
             var tag = (ev.target.tagName || '').toLowerCase();
-            if (ev.key === 'Enter' && tag !== 'input' && tag !== 'select' && tag !== 'textarea' && tag !== 'button') { ev.preventDefault(); apply(); }
+            var inField = tag === 'input' || tag === 'select' || tag === 'textarea';
+            if (ev.key === 'Enter' && !inField && tag !== 'button') { ev.preventDefault(); apply(); }
             if (ev.key === 'Enter' && ev.target === $('search')) { ev.preventDefault(); apply(); }
             if (ev.key === 'Escape') { if (S.query) { $('search').value = ''; S.query = ''; $('searchClear').classList.add('hidden'); renderGrid(); } }
+            if ((ev.key === 'z' || ev.key === 'Z') && (ev.ctrlKey || ev.metaKey) && !inField) { ev.preventDefault(); if (ev.shiftKey) redo(); else undo(); }
             if ((ev.key === 'ArrowRight' || ev.key === 'ArrowLeft' || ev.key === 'ArrowDown' || ev.key === 'ArrowUp') && (tag === 'body' || ev.target === $('grid') || ev.target.classList.contains('card'))) {
                 var cards = Array.prototype.slice.call(document.querySelectorAll('.card')); if (!cards.length) return;
                 var idx = S.selected ? cards.findIndex(function (c) { return c.dataset.id === S.selected.id; }) : -1;
-                var cols = Math.max(1, Math.round($('grid').clientWidth / (cards[0].offsetWidth + 8)));
+                var cols = Math.max(1, Math.round($('grid').clientWidth / (cards[0].offsetWidth + 5)));
                 var d = ev.key === 'ArrowRight' ? 1 : ev.key === 'ArrowLeft' ? -1 : ev.key === 'ArrowDown' ? cols : -cols;
                 var ni = clamp(idx + d, 0, cards.length - 1);
                 var node = cards[ni]; var p = S.catalog.presets.filter(function (x) { return x.id === node.dataset.id; })[0];
@@ -376,10 +536,13 @@
         $('btnApply').addEventListener('click', apply);
         $('btnPreview').addEventListener('click', preview);
         $('btnKeep').addEventListener('click', previewKeep);
-        $('btnUndo').addEventListener('click', function () { previewUndo(); });
-        $('btnClean').addEventListener('click', clean);
+        $('btnPvUndo').addEventListener('click', function () { previewUndo(); });
+        $('btnUndo').addEventListener('click', undo);
+        $('btnRedo').addEventListener('click', redo);
+        $('btnReset').addEventListener('click', resetLayer);
         $('infoFav').addEventListener('click', function () { if (S.selected) toggleFav(S.selected.id); });
         document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') startPolling(); else stopPolling(); });
+        window.addEventListener('resize', function () { if (!$('settings').classList.contains('collapsed')) drawGraph(); });
         initKeys();
 
         loadHost(function (cat, err) {
@@ -394,8 +557,13 @@
             if (!cat.cats.some(function (c) { return c.id === S.cat; })) S.cat = 'in';
             initSettings(); renderTabs(); renderGrid();
             document.title = 'UniKit ' + cat.version;
+            $('statusVer').textContent = buildLabel();
+            $('statusVer').title = 'Ядро UniKit ' + buildLabel() + (DEV ? ' (dev-режим, каталог из dev/catalog.json)' : '');
             startPolling();
         });
     }
     document.addEventListener('DOMContentLoaded', boot);
+
+    // для отладки из консоли
+    window.UKPanel = { state: S, drawGraph: drawGraph, setBez: setBez };
 })();

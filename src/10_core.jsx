@@ -480,7 +480,7 @@ UK.textOffsetKeys = function (ta, t0, t1, from, to, ease) {
 // ------------------------------------------------------------------ контекст применения
 /** Собрать opts из UI (или дефолт). */
 UK.defaultOpts = function () {
-    return { dur: 0.8, ease: 'expoOut', strength: 100, dir: 'L', startMode: 'in', stagger: 0.1, controls: true, adj: false };
+    return { dur: 0.8, ease: 'expoOut', strength: 100, dir: 'L', startMode: 'in', stagger: 0.1, controls: true, adj: false, bez: [0.19, 1, 0.22, 1] };
 };
 
 /** Построить контекст для слоя. */
@@ -500,7 +500,7 @@ UK.ctxFor = function (comp, layer, layers, i, opts, cat) {
         comp: comp, layer: layer, layers: layers, i: i, opts: opts, cat: cat,
         t0: t0, t1: t1, dur: dur, tMid: (t0 + t1) / 2,
         strength: (Number(opts.strength) || 100) / 100,
-        ease: UK.easeById(opts.ease),
+        ease: UK.easeFromOpts(opts),
         easeId: opts.ease,
         dir: d, dirV: d.v, dirId: d.id,
         fps: 1 / comp.frameDuration, fd: comp.frameDuration,
@@ -530,7 +530,7 @@ UK.transCtx = function (comp, layers, opts) {
         comp: comp, layers: ls, A: A, B: B, cut: cut, dur: dur, opts: opts,
         t0: cut - dur / 2, t1: cut + dur / 2, half: dur / 2,
         strength: (Number(opts.strength) || 100) / 100,
-        ease: UK.easeById(opts.ease), easeId: opts.ease,
+        ease: UK.easeFromOpts(opts), easeId: opts.ease,
         dir: d, dirV: d.v, dirId: d.id,
         fps: 1 / comp.frameDuration, fd: comp.frameDuration,
         cat: 'trans'
@@ -597,4 +597,116 @@ UK.run = function (presetId, opts) {
         alert(UK.NAME + ' — ошибка в пресете «' + p.name + '»:\n' + e.toString() + (e.line ? '\n(строка ' + e.line + ')' : ''));
     }
     app.endUndoGroup();
+};
+
+// ------------------------------------------------------------------ bezier-изинг (как Flow): cubic-bezier → influence/speed
+/** Средняя скорость между двумя ключами (массив по измерениям ease; для spatial — модуль). */
+UK.avgSpeed = function (prop, k1, k2) {
+    var t1 = prop.keyTime(k1), t2 = prop.keyTime(k2), dt = Math.max(1e-6, t2 - t1);
+    var v1 = prop.keyValue(k1), v2 = prop.keyValue(k2);
+    var n = UK.dimsOf(prop), r = [], i;
+    if (prop.isSpatial || (UK.isArr(v1) && n === 1)) {
+        var d = 0;
+        if (UK.isArr(v1)) { for (i = 0; i < v1.length; i++) d += (v2[i] - v1[i]) * (v2[i] - v1[i]); d = Math.sqrt(d); }
+        else d = Math.abs(v2 - v1);
+        r.push(d / dt);
+        return r;
+    }
+    if (UK.isArr(v1)) { for (i = 0; i < n; i++) r.push(((v2[i] || 0) - (v1[i] || 0)) / dt); }
+    else r.push((v2 - v1) / dt);
+    return r;
+};
+/** Применить cubic-bezier [x1,y1,x2,y2] к паре ключей k1→k2. */
+UK.bezPair = function (prop, k1, k2, bez) {
+    var x1 = UK.clamp(bez[0], 0.001, 0.999), y1 = bez[1], x2 = UK.clamp(bez[2], 0.001, 0.999), y2 = bez[3];
+    var avg = UK.avgSpeed(prop, k1, k2), i;
+    var outE = [], inE = [];
+    for (i = 0; i < avg.length; i++) {
+        outE.push(new KeyframeEase(avg[i] * (y1 / x1), UK.clamp(x1 * 100, 0.1, 100)));
+        inE.push(new KeyframeEase(avg[i] * ((1 - y2) / (1 - x2)), UK.clamp((1 - x2) * 100, 0.1, 100)));
+    }
+    prop.setInterpolationTypeAtKey(k1, prop.keyInInterpolationType(k1) === KeyframeInterpolationType.HOLD ? KeyframeInterpolationType.HOLD : KeyframeInterpolationType.BEZIER, KeyframeInterpolationType.BEZIER);
+    prop.setInterpolationTypeAtKey(k2, KeyframeInterpolationType.BEZIER, prop.keyOutInterpolationType(k2) === KeyframeInterpolationType.HOLD ? KeyframeInterpolationType.HOLD : KeyframeInterpolationType.BEZIER);
+    prop.setTemporalEaseAtKey(k1, prop.keyInTemporalEase(k1), outE);
+    prop.setTemporalEaseAtKey(k2, inE, prop.keyOutTemporalEase(k2));
+};
+UK.bezMirror = function (b) { return [1 - b[2], 1 - b[3], 1 - b[0], 1 - b[1]]; };
+/** Библиотека кривых (Flow-style). */
+UK.CURVES = [
+    { id: 'linear',     name: 'Linear',        bez: [0, 0, 1, 1] },
+    { id: 'ease',       name: 'Ease',          bez: [0.25, 0.1, 0.25, 1] },
+    { id: 'easeIn',     name: 'Ease In',       bez: [0.42, 0, 1, 1] },
+    { id: 'easeOut',    name: 'Ease Out',      bez: [0, 0, 0.58, 1] },
+    { id: 'easeInOut',  name: 'Ease In Out',   bez: [0.42, 0, 0.58, 1] },
+    { id: 'sineIn',     name: 'Sine In',       bez: [0.47, 0, 0.745, 0.715] },
+    { id: 'sineOut',    name: 'Sine Out',      bez: [0.39, 0.575, 0.565, 1] },
+    { id: 'sineInOut',  name: 'Sine In Out',   bez: [0.445, 0.05, 0.55, 0.95] },
+    { id: 'quadIn',     name: 'Quad In',       bez: [0.55, 0.085, 0.68, 0.53] },
+    { id: 'quadOut',    name: 'Quad Out',      bez: [0.25, 0.46, 0.45, 0.94] },
+    { id: 'quadInOut',  name: 'Quad In Out',   bez: [0.455, 0.03, 0.515, 0.955] },
+    { id: 'cubicIn',    name: 'Cubic In',      bez: [0.55, 0.055, 0.675, 0.19] },
+    { id: 'cubicOut',   name: 'Cubic Out',     bez: [0.215, 0.61, 0.355, 1] },
+    { id: 'cubicInOut', name: 'Cubic In Out',  bez: [0.645, 0.045, 0.355, 1] },
+    { id: 'quartIn',    name: 'Quart In',      bez: [0.895, 0.03, 0.685, 0.22] },
+    { id: 'quartOut',   name: 'Quart Out',     bez: [0.165, 0.84, 0.44, 1] },
+    { id: 'quartInOut', name: 'Quart In Out',  bez: [0.77, 0, 0.175, 1] },
+    { id: 'quintIn',    name: 'Quint In',      bez: [0.755, 0.05, 0.855, 0.06] },
+    { id: 'quintOut',   name: 'Quint Out',     bez: [0.23, 1, 0.32, 1] },
+    { id: 'quintInOut', name: 'Quint In Out',  bez: [0.86, 0, 0.07, 1] },
+    { id: 'expoIn',     name: 'Expo In',       bez: [0.95, 0.05, 0.795, 0.035] },
+    { id: 'expoOut',    name: 'Expo Out',      bez: [0.19, 1, 0.22, 1] },
+    { id: 'expoInOut',  name: 'Expo In Out',   bez: [1, 0, 0, 1] },
+    { id: 'circIn',     name: 'Circ In',       bez: [0.6, 0.04, 0.98, 0.335] },
+    { id: 'circOut',    name: 'Circ Out',      bez: [0.075, 0.82, 0.165, 1] },
+    { id: 'circInOut',  name: 'Circ In Out',   bez: [0.785, 0.135, 0.15, 0.86] },
+    { id: 'backIn',     name: 'Back In',       bez: [0.6, -0.28, 0.735, 0.045] },
+    { id: 'backOut',    name: 'Back Out',      bez: [0.175, 0.885, 0.32, 1.275] },
+    { id: 'backInOut',  name: 'Back In Out',   bez: [0.68, -0.55, 0.265, 1.55] },
+    { id: 'smoothFlow', name: 'Smooth (Flow)', bez: [0.65, 0, 0.35, 1] },
+    { id: 'snappy',     name: 'Snappy',        bez: [0.9, 0, 0.1, 1] },
+    { id: 'anticipate', name: 'Anticipate',    bez: [0.36, -0.2, 0.2, 1] }
+];
+UK.curveById = function (id) {
+    for (var i = 0; i < UK.CURVES.length; i++) if (UK.CURVES[i].id === id) return UK.CURVES[i];
+    return null;
+};
+/** Нормализовать изинг из opts: 'custom' + opts.bez → объект с bez; id кривой из CURVES → bez; иначе EASES. */
+UK.easeFromOpts = function (opts) {
+    var id = opts.ease;
+    if (id === 'custom' && UK.isArr(opts.bez) && opts.bez.length === 4) return { id: 'custom', name: 'Custom', bez: opts.bez.slice() };
+    var cv = UK.curveById(id);
+    if (cv) return { id: cv.id, name: cv.name, bez: cv.bez.slice() };
+    return UK.easeById(id);
+};
+// переопределяем UK.keys с поддержкой bezier
+UK._keysBasic = UK.keys;
+UK.keys = function (prop, pairs, ease, mirror) {
+    if (typeof ease === 'string') ease = UK.curveById(ease) ? { id: ease, bez: UK.curveById(ease).bez.slice() } : UK.easeById(ease);
+    if (!ease) ease = UK.EASES[0];
+    if (!ease.bez) return UK._keysBasic(prop, pairs, ease, mirror);
+    var idx = [], i;
+    for (i = 0; i < pairs.length; i++) idx.push(UK.key(prop, pairs[i][0], pairs[i][1]));
+    var bez = mirror ? UK.bezMirror(ease.bez) : ease.bez;
+    for (i = 0; i < idx.length - 1; i++) {
+        if (ease.id === 'linear') { UK.setLinear(prop, idx[i]); UK.setLinear(prop, idx[i + 1]); continue; }
+        UK.bezPair(prop, idx[i], idx[i + 1], bez);
+    }
+    return idx;
+};
+/** Применить кривую к выделенным ключам в таймлайне (как Flow). Возвращает число обработанных пар. */
+UK.applyBezToSelectedKeys = function (bez, comp) {
+    comp = comp || app.project.activeItem;
+    if (!(comp && comp instanceof CompItem)) throw new Error('Откройте композицию');
+    var props = comp.selectedProperties, n = 0, i, j;
+    for (i = 0; i < props.length; i++) {
+        var p = props[i];
+        if (!p || p.propertyType !== PropertyType.PROPERTY || !p.canVaryOverTime || p.numKeys < 2) continue;
+        var sel = p.selectedKeys;
+        if (!sel || sel.length < 2) continue;
+        sel = sel.slice().sort(function (a, b) { return a - b; });
+        for (j = 0; j < sel.length - 1; j++) {
+            if (sel[j + 1] === sel[j] + 1) { UK.bezPair(p, sel[j], sel[j + 1], bez); n++; }
+        }
+    }
+    return n;
 };

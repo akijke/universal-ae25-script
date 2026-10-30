@@ -251,3 +251,24 @@ ADBE Grid:              1 Anchor, 2 Size From, 3 Corner, 4 Width, 5 Height, 6 Bo
 Если пресет создаёт солид/дубль (UK.solid, layer.duplicate()) и ставит на него выражения со ссылкой
 `effect("UK: …")`, то слайдеры должны лежать **на том же слое**: передавайте `UK.cv({ opts: c.opts, layer: solid }, ...)`
 или вызывайте `UK.slider(solid, …)` явно. Ссылка на другой слой по имени (`thisComp.layer("…")`) ломается при переименовании.
+
+## Bezier-кривые (Flow-style)
+
+`opts.ease` может быть: id из `UK.EASES` (старые influence-изинги и выражения back/bounce/elastic),
+id кривой из `UK.CURVES` (linear, ease, easeIn/Out/InOut, sine/quad/cubic/quart/quint/expo/circ/back ×3,
+smoothFlow, snappy, anticipate) или `'custom'` + `opts.bez = [x1, y1, x2, y2]`.
+`UK.easeFromOpts(opts)` нормализует это в объект; `UK.keys`/`UK.key2` при наличии `bez` ставят ручки через
+`UK.bezPair(prop, k1, k2, bez)` (influence = x·100, speed = наклон ручки × средняя скорость между ключами;
+y вне 0..1 даёт overshoot). `UK.applyBezToSelectedKeys(bez)` — кривая на выделенные пары ключей в таймлайне.
+
+## Undo / сброс
+
+`UK.undoJSON()` / `UK.redoJSON()` — команды Undo/Redo AE. `UK.resetJSON()` — снять всё, что наложил UniKit,
+с выделенных слоёв (`UK.resetLayer`): эффекты/контролы UK, аниматоры и маски с префиксом UK, выражения на
+Transform и ссылки на UK-контролы, ключи Transform (значение фиксируется по середине слоя); слои `UK · …`
+среди выделенных удаляются.
+
+## Версия сборки
+
+`build.js` вписывает `UK.BUILD = 'YYYY-MM-DD HH:MM · <git>'` и подменяет `?v=` у css/js в index.html панели
+(cache-busting). Панель показывает версию и сборку в статус-баре.

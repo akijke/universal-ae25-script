@@ -74,6 +74,12 @@ class Property {
     }
     setSpatialTangentsAtKey() {} setSpatialAutoBezierAtKey() {} setSpatialContinuousAtKey() {} setTemporalAutoBezierAtKey() {} setTemporalContinuousAtKey() {} setRovingAtKey() {}
     keyInInterpolationType(i) { this._k(i); return this.keys[i - 1].inType; }
+    keyOutInterpolationType(i) { this._k(i); return this.keys[i - 1].outType; }
+    keyInTemporalEase(i) { this._k(i); const need = this.isSpatial ? 1 : (this.propertyValueType === PropertyValueType.TwoD ? 2 : this.propertyValueType === PropertyValueType.ThreeD ? 3 : 1); return Array.from({ length: need }, () => new KeyframeEase(0, 33)); }
+    keyOutTemporalEase(i) { return this.keyInTemporalEase(i); }
+    get canVaryOverTime() { return true; }
+    get selectedKeys() { return this._selKeys || []; }
+    set selectedKeys(v) { this._selKeys = v; }
     setSelectedAtKey() {}
     addKey(t) { this.setValueAtTime(t, this._value); return this.nearestKeyIndex(t); }
     property() { return null; }
@@ -372,6 +378,8 @@ class CompItem {
     }
     get numLayers() { return this.layers.length; }
     get selectedLayers() { return this.layers._arr.filter(l => l.selected); }
+    get selectedProperties() { return this._selProps || []; }
+    set selectedProperties(v) { this._selProps = v; }
     get activeCamera() { return this.layers._arr.find(l => l instanceof CameraLayer) || null; }
     layer(x) { if (typeof x === 'number') return this.layers._arr[x - 1]; return this.layers.byName(x); }
     openInViewer() {}

@@ -97,6 +97,19 @@ for (const p of UK.presets) {
     const fv = JSON.parse(UK.toggleFavJSON('in.fade'));
     if (fv.fav !== true) { console.log('FAIL toggleFavJSON', fv); fails++; }
     UK.toggleFav('in.fade');
+    // custom bezier ease + ease on selected keys + undo/redo/reset
+    select(o, [o.a]);
+    const rb = JSON.parse(UK.runJSON('in.slide', '{"dur":0.5,"ease":"custom","bez":[0.6,-0.28,0.735,0.045]}'));
+    if (!rb.ok) { console.log('FAIL runJSON custom bez', rb); fails++; }
+    const rc = JSON.parse(UK.runJSON('in.scalePop', '{"dur":0.5,"ease":"backOut"}'));
+    if (!rc.ok) { console.log('FAIL runJSON curve id', rc); fails++; }
+    const pos = o.a.position; pos.selectedKeys = [1, 2]; o.c.selectedProperties = [pos];
+    const ek = JSON.parse(UK.applyEaseKeysJSON('[0.25,0.1,0.25,1]'));
+    if (!ek.ok || ek.pairs !== 1) { console.log('FAIL applyEaseKeysJSON', ek); fails++; }
+    const ru = JSON.parse(UK.undoJSON()); if (!ru.ok) { console.log('FAIL undoJSON', ru); fails++; }
+    const rr = JSON.parse(UK.redoJSON()); if (!rr.ok) { console.log('FAIL redoJSON', rr); fails++; }
+    const rs = JSON.parse(UK.resetJSON());
+    if (!rs.ok || o.a.position.numKeys !== 0 || o.a.property('ADBE Effect Parade').numProperties !== 0) { console.log('FAIL resetJSON', rs, o.a.position.numKeys); fails++; }
     const missing = UK.presets.filter(p => !UK.PREVIEW[p.id] && !p.preview).map(p => p.id);
     if (missing.length) console.log('presets without preview key (' + missing.length + '):', missing.slice(0, 30).join(', '), missing.length > 30 ? '…' : '');
 }

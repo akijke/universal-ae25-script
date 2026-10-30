@@ -65,6 +65,8 @@ UK.catalogJSON = function () {
     }
     return UK.json({
         version: UK.VERSION,
+        build: UK.BUILD || '',
+        curves: UK.CURVES,
         cats: UK.CATS,
         eases: UK.EASES.map(function (e) { return { id: e.id, name: e.name }; }),
         dirs: UK.DIRS.map(function (d) { return { id: d.id, name: d.name }; }),
@@ -73,12 +75,13 @@ UK.catalogJSON = function () {
         settings: {
             dur: UK.settings.get('dur', '0.8'), ease: UK.settings.get('ease', 'expoOut'), strength: UK.settings.get('strength', '100'),
             dir: UK.settings.get('dir', 'L'), startMode: UK.settings.get('startMode', 'in'), stagger: UK.settings.get('stagger', '0.1'),
-            controls: UK.settings.get('controls', 'true'), adj: UK.settings.get('adj', 'false'), cat: UK.settings.get('cat', 'in')
+            controls: UK.settings.get('controls', 'true'), adj: UK.settings.get('adj', 'false'), cat: UK.settings.get('cat', 'in'),
+            bez: UK.settings.get('bez', '[0.19,1,0.22,1]')
         }
     });
 };
 UK.saveOpts = function (o) {
-    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) UK.settings.set(k, o[k]);
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) UK.settings.set(k, UK.isArr(o[k]) ? '[' + o[k].join(',') + ']' : o[k]);
 };
 
 // ------------------------------------------------------------------ состояние выделения (для панели)

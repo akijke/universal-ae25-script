@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UniKit</title>
-<link rel="stylesheet" href="css/style.css">
+<link rel="stylesheet" href="css/style.css?v=202610302246ea2935e">
 </head>
 <body>
 <div id="app" class="app">
@@ -15,7 +15,7 @@
   <!-- ПОИСК -->
   <div class="search">
     <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-    <input id="search" type="search" placeholder="Поиск пресета… (по всем категориям)" autocomplete="off" spellcheck="false">
+    <input id="search" type="search" placeholder="Поиск по всем категориям" autocomplete="off" spellcheck="false">
     <button id="searchClear" class="icon-btn hidden" title="Очистить" aria-label="Очистить поиск">
       <svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
     </button>
@@ -44,7 +44,7 @@
     <button id="settingsToggle" class="settings-toggle" type="button">
       <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg>
       <span>Настройки</span>
-      <span id="settingsSummary" class="settings-summary"></span>
+      <span id="settingsSummary" class="settings-summary"><span id="summaryText"></span><svg id="summaryCurve" class="mini-curve" viewBox="0 0 24 24"><rect class="box" x="2" y="2" width="20" height="20"/><path d="M2 22C8 22 8 2 22 2"/></svg></span>
       <svg class="ico chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
     </button>
     <div id="settingsBody" class="settings-body">
@@ -55,115 +55,138 @@
           <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>
           <span>Длительность</span>
         </label>
-        <div class="ctl">
+        <div class="ctl ctl-range">
+          <input id="optDurR" type="range" min="0.1" max="3" step="0.05" value="0.8">
           <input id="optDur" type="number" min="0.05" max="20" step="0.05" value="0.8">
           <span class="unit">с</span>
-          <div class="chips" id="durChips">
-            <button type="button" data-v="0.3">0.3</button>
-            <button type="button" data-v="0.5">0.5</button>
-            <button type="button" data-v="0.8">0.8</button>
-            <button type="button" data-v="1.2">1.2</button>
-          </div>
         </div>
       </div>
-
-      <!-- Изинг -->
-      <div class="row" title="Характер движения: Back/Bounce/Elastic добавляют выражение поверх ключей">
-        <label class="lbl" for="optEase">
-          <svg class="ico" viewBox="0 0 24 24"><path d="M3 19C9 19 9 5 21 5"/><path d="M3 21V3M3 21h18" opacity=".35"/></svg>
-          <span>Изинг</span>
-        </label>
-        <div class="ctl">
-          <div class="select-wrap">
-            <svg id="easeIcon" class="ease-ico" viewBox="0 0 24 24"><path d="M3 19C9 19 9 5 21 5"/></svg>
-            <select id="optEase"></select>
-            <svg class="ico chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-          </div>
-        </div>
-      </div>
-
-      <!-- Направление -->
-      <div class="row" title="Направление для slide / wipe / whip и всего, где есть геометрия">
-        <div class="lbl">
-          <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
-          <span>Направление</span>
-        </div>
-        <div class="ctl">
-          <div class="seg dirs" id="optDir">
-            <button type="button" data-v="L" title="Слева">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M20 12H5M11 6l-6 6 6 6"/></svg>
-            </button>
-            <button type="button" data-v="U" title="Сверху">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6"/></svg>
-            </button>
-            <button type="button" data-v="D" title="Снизу">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></svg>
-            </button>
-            <button type="button" data-v="R" title="Справа">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
-            </button>
-          </div>
+      <div class="row">
+        <span></span>
+        <div class="chips" id="durChips">
+          <button type="button" data-v="0.25">0.25</button>
+          <button type="button" data-v="0.5">0.5</button>
+          <button type="button" data-v="0.8">0.8</button>
+          <button type="button" data-v="1.2">1.2</button>
+          <button type="button" data-v="2">2.0</button>
         </div>
       </div>
 
       <!-- Сила -->
       <div class="row" title="Амплитуда / интенсивность: расстояние, размытие, искажение">
         <label class="lbl" for="optStr">
-          <svg class="ico" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 18V6M20 18V6M4 12h16M8 9v6M16 9v6"/></svg>
           <span>Сила</span>
         </label>
         <div class="ctl ctl-range">
           <input id="optStr" type="range" min="0" max="300" step="5" value="100">
-          <output id="optStrOut" for="optStr">100%</output>
-        </div>
-      </div>
-
-      <!-- Старт -->
-      <div class="row" title="Откуда начинать анимацию">
-        <div class="lbl">
-          <svg class="ico" viewBox="0 0 24 24"><path d="M5 4v16M5 12h14M15 8l4 4-4 4"/></svg>
-          <span>Старт</span>
-        </div>
-        <div class="ctl">
-          <div class="seg" id="optStart">
-            <button type="button" data-v="in" title="От границы слоя (in/out point)">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M8 4H5v16h3M16 4h3v16h-3"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
-              <span>Слой</span>
-            </button>
-            <button type="button" data-v="playhead" title="От курсора (playhead)">
-              <svg class="ico" viewBox="0 0 24 24"><path d="M12 7v14M8 3h8l-4 4z"/><path d="M3 21h18" opacity=".35"/></svg>
-              <span>Курсор</span>
-            </button>
-          </div>
+          <input id="optStrN" type="number" min="0" max="1000" step="5" value="100">
+          <span class="unit">%</span>
         </div>
       </div>
 
       <!-- Шаг -->
       <div class="row" title="Задержка между слоями при применении на несколько слоёв (каскад)">
         <label class="lbl" for="optStag">
-          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20h5v-4h5v-4h5V8"/><path d="M19 8V4h1" opacity=".35"/></svg>
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20h5v-4h5v-4h5V8"/></svg>
           <span>Шаг</span>
         </label>
-        <div class="ctl">
-          <input id="optStag" type="number" min="0" max="5" step="0.05" value="0.1">
+        <div class="ctl ctl-range">
+          <input id="optStagR" type="range" min="0" max="0.5" step="0.01" value="0.1">
+          <input id="optStag" type="number" min="0" max="5" step="0.01" value="0.1">
           <span class="unit">с</span>
         </div>
       </div>
 
+      <!-- Направление + Старт -->
+      <div class="two">
+        <div class="row" title="Направление для slide / wipe / whip и всего, где есть геометрия">
+          <div class="lbl">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+            <span>Направление</span>
+          </div>
+          <div class="ctl">
+            <div class="dpad" id="optDir">
+              <span class="e"></span>
+              <button type="button" data-v="U" title="Сверху"><svg class="ico" viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6"/></svg></button>
+              <span class="e"></span>
+              <button type="button" data-v="L" title="Слева"><svg class="ico" viewBox="0 0 24 24"><path d="M20 12H5M11 6l-6 6 6 6"/></svg></button>
+              <span class="c" id="dirLabel">←</span>
+              <button type="button" data-v="R" title="Справа"><svg class="ico" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg></button>
+              <span class="e"></span>
+              <button type="button" data-v="D" title="Снизу"><svg class="ico" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></svg></button>
+              <span class="e"></span>
+            </div>
+          </div>
+        </div>
+        <div class="row" title="Откуда начинать анимацию">
+          <div class="lbl">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M5 4v16M5 12h14M15 8l4 4-4 4"/></svg>
+            <span>Старт</span>
+          </div>
+          <div class="ctl">
+            <div class="seg" id="optStart">
+              <button type="button" data-v="in" title="От границы слоя (in / out point)">
+                <svg class="ico" viewBox="0 0 24 24"><path d="M8 4H5v16h3M16 4h3v16h-3"/><rect x="9" y="9" width="6" height="6"/></svg>
+                <span>Слой</span>
+              </button>
+              <button type="button" data-v="playhead" title="От курсора (playhead)">
+                <svg class="ico" viewBox="0 0 24 24"><path d="M12 7v14M8 3h8l-4 4z"/></svg>
+                <span>Курсор</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Тогглы -->
-      <div class="row toggles">
+      <div class="toggles">
         <label class="toggle" title="Параметры пресета выносятся в Effect Controls как слайдеры UK: … и управляют эффектами через выражения">
           <input id="optControls" type="checkbox" checked>
           <span class="tg"></span>
           <svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/></svg>
-          <span>Слайдеры</span>
+          <span>Слайдеры-контролы</span>
         </label>
         <label class="toggle" title="Эффекты / искажения / свет / камера — на новый корректирующий слой над выделением">
           <input id="optAdj" type="checkbox">
           <span class="tg"></span>
-          <svg class="ico" viewBox="0 0 24 24"><path d="M3 12l9-5 9 5-9 5z"/><path d="M3 17l9 5 9-5" opacity=".5"/><path d="M19 3v6M16 6h6"/></svg>
-          <span>Корр. слой</span>
+          <svg class="ico" viewBox="0 0 24 24"><path d="M3 12l9-5 9 5-9 5z"/><path d="M3 17l9 5 9-5"/></svg>
+          <span>На корр. слой</span>
         </label>
+      </div>
+
+      <!-- EASE -->
+      <div class="ease" id="ease">
+        <div class="ease-head">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M3 19C9 19 9 5 21 5"/></svg>
+          <span>Изинг</span>
+          <span class="name" id="easeName">Expo Out</span>
+          <span class="sp"></span>
+          <div class="ease-mode" id="easeMode">
+            <button type="button" data-m="curve" title="Кривая cubic-bezier → безье-ручки ключей">Кривая</button>
+            <button type="button" data-m="back" title="Выражение: перелёт (overshoot) поверх ключей">Back</button>
+            <button type="button" data-m="bounce" title="Выражение: отскок поверх ключей">Bounce</button>
+            <button type="button" data-m="elastic" title="Выражение: пружина поверх ключей">Elastic</button>
+          </div>
+        </div>
+        <svg id="easeGraph" class="ease-graph" viewBox="0 0 200 200" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="ease-nums">
+          <label>x1<input id="bx1" type="number" min="0" max="1" step="0.01"></label>
+          <label>y1<input id="by1" type="number" min="-1" max="2" step="0.01"></label>
+          <label>x2<input id="bx2" type="number" min="0" max="1" step="0.01"></label>
+          <label>y2<input id="by2" type="number" min="-1" max="2" step="0.01"></label>
+          <button id="bezFlip" class="icon-btn" type="button" title="Отразить кривую (in ↔ out)">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v18M7 8l-4 4 4 4M17 8l4 4-4 4"/></svg>
+          </button>
+        </div>
+        <div class="ease-lib" id="easeLib"></div>
+        <div class="ease-foot">
+          <span class="hint" id="easeHint">Перетащите ручки или выберите кривую из библиотеки</span>
+          <button id="btnEaseKeys" class="btn" type="button" title="Поставить эту кривую на выделенные ключи в таймлайне (как Flow)">
+            <svg class="ico" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>
+            <span>На ключи</span>
+          </button>
+        </div>
       </div>
     </div>
   </section>
@@ -183,17 +206,25 @@
         <svg class="ico" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
         <span>Оставить</span>
       </button>
-      <button id="btnUndo" class="btn warn hidden" type="button" title="Отменить предпросмотр (Undo)">
+      <button id="btnPvUndo" class="btn warn hidden" type="button" title="Отменить предпросмотр">
         <svg class="ico" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
         <span>Отменить</span>
       </button>
-      <button id="btnClean" class="btn icon-only" type="button" title="Удалить все эффекты и контролы UniKit с выделенных слоёв">
-        <svg class="ico" viewBox="0 0 24 24"><path d="M14 3l7 7-5 5-7-7z"/><path d="M9 8l-6 6 2 5 5 2 6-6"/><path d="M5 16l3 3"/></svg>
+      <span class="sep"></span>
+      <button id="btnUndo" class="btn icon-only" type="button" title="Отменить последнее действие (Undo)">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
+      </button>
+      <button id="btnRedo" class="btn icon-only" type="button" title="Повторить (Redo)">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M15 14l5-5-5-5"/><path d="M20 9H10a6 6 0 000 12h3"/></svg>
+      </button>
+      <button id="btnReset" class="btn icon-only danger" type="button" title="Сбросить слой: снять всё, что наложил UniKit с выделенных слоёв">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M20 20H9"/><path d="M5.5 14.5l9-9a2 2 0 012.8 0l2.2 2.2a2 2 0 010 2.8l-9 9H7l-1.5-1.5a2 2 0 010-2.8z"/><path d="M11 8l5 5"/></svg>
       </button>
     </div>
     <div id="status" class="status">
       <span class="dot"></span>
       <span id="statusText">Подключение к After Effects…</span>
+      <span id="statusVer" class="ver" title="Версия и сборка ядра"></span>
     </div>
   </footer>
 
@@ -218,7 +249,7 @@
   </article>
 </template>
 
-<script src="js/cep.js"></script>
-<script src="js/app.js"></script>
+<script src="js/cep.js?v=202610302246ea2935e"></script>
+<script src="js/app.js?v=202610302246ea2935e"></script>
 </body>
 </html>
