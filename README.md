@@ -14,6 +14,14 @@ Animation Composer / Motion Bro / EditKit / AtomX: анимации появле
 включит режим неподписанных расширений (PlayerDebugMode в HKCU\Software\Adobe\CSXS.9–12) и положит
 резервную ScriptUI-панель в папки ScriptUI Panels. После перезапуска AE: **Window > Extensions > UniKit**.
 
+### Обновление
+
+* Кнопка **⟳ Обновить** в шапке панели — запускает `update.bat` в отдельном окне консоли (путь к папке проекта
+  установщик сохраняет в `repo_path.txt` рядом с панелью). После завершения перезапустите AE.
+* Или вручную: `update.bat` в папке проекта. Он делает `git fetch` + `git pull --ff-only` из GitHub
+  (локальные правки откладывает в `git stash`), пересобирает `dist/UniKit.jsx` (если есть node) и тихо
+  переустанавливает обе панели (`install.bat /silent`). Показывает список изменений между версиями.
+
 ### Вручную (ScriptUI-версия)
 
 1. Соберите (или возьмите готовый) `dist/UniKit.jsx`:
@@ -92,7 +100,8 @@ src/
   90_footer.jsx
 cep/com.unikit.panel/ CEP-панель: CSXS/manifest.xml, index.html, css, js, host/ (копия ядра), dev/
 build.js            сборка в dist/UniKit.jsx + проверка на не-ES3 синтаксис
-install.bat         установка в AE
+install.bat         установка в AE (/silent — без паузы)
+update.bat          обновление из GitHub + пересборка + переустановка
 test/mock_ae.js     мок AE API для node
 test/run.js         прогон всех пресетов через мок (node test/run.js [фильтр])
 test/ae_selftest.jsx  прогон всех пресетов в настоящем AE (File > Scripts > Run Script File)

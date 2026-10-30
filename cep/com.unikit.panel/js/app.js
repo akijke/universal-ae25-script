@@ -291,6 +291,21 @@
         } });
     }
 
+    // ------------------------------------------------------------ обновление из GitHub
+    function updateKit() {
+        if (DEV) { toast('Обновление доступно только внутри After Effects', 'info', 2500); return; }
+        var ext = CEP.getSystemPath('extension');
+        var repo = CEP.readFile(ext + '/repo_path.txt');
+        if (!repo) { toast('Не найден путь к репозиторию. Переустановите панель через install.bat из папки проекта.', 'err', 7000); return; }
+        repo = repo.replace(/[\r\n]+$/, '').replace(/[\\\/]+$/, '');
+        var bat = repo + '\\update.bat';
+        toast('Запустить обновление UniKit из GitHub?\nОткроется окно консоли; после завершения перезапустите AE.', 'info', 8000, { label: 'Обновить', fn: function () {
+            var ok = CEP.run('C:\\Windows\\System32\\cmd.exe', ['/c', 'start', 'UniKit update', bat]);
+            if (ok) toast('Обновление запущено в отдельном окне. После завершения перезапустите After Effects.', 'ok', 6000);
+            else toast('Не удалось запустить update.bat. Запустите его вручную из папки проекта: ' + bat, 'err', 9000);
+        } });
+    }
+
     // ------------------------------------------------------------ статус / выделение
     var lastSel = { comp: false, count: 0, names: [], hasText: false };
     var pollTimer = null;
@@ -355,6 +370,7 @@
         $('btnApply').disabled = true; $('btnPreview').disabled = true;
         CEP.applyHostTheme();
         CEP.addEventListener('com.adobe.csxs.events.ThemeColorChanged', function () { CEP.applyHostTheme(); });
+        $('btnUpdate').addEventListener('click', updateKit);
         $('search').addEventListener('input', function () { S.query = this.value; $('searchClear').classList.toggle('hidden', !S.query); renderGrid(); });
         $('searchClear').addEventListener('click', function () { $('search').value = ''; S.query = ''; this.classList.add('hidden'); renderGrid(); $('search').focus(); });
         $('btnApply').addEventListener('click', apply);

@@ -45,6 +45,19 @@
             try { cep.addEventListener(type, fn); } catch (e) {}
         },
 
+        /** Прочитать текстовый файл (CEP fs). */
+        readFile: function (path) {
+            var fsApi = global.cep && global.cep.fs;
+            if (!fsApi) return null;
+            try { var r = fsApi.readFile(path); return r && r.err === 0 ? String(r.data) : null; } catch (e) { return null; }
+        },
+        /** Запустить процесс (CEP process). args — массив строк. Возвращает true при успехе. */
+        run: function (exe, args) {
+            var pr = global.cep && global.cep.process;
+            if (!pr) return false;
+            try { var r = pr.createProcess.apply(pr, [exe].concat(args || [])); return !!r && r.err === 0; } catch (e) { return false; }
+        },
+
         openURL: function (url) {
             if (cep && cep.util && cep.util.openURLInDefaultBrowser) cep.util.openURLInDefaultBrowser(url);
             else global.open(url, '_blank');

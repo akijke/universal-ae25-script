@@ -529,3 +529,9 @@ output { min-width: 40px; text-align: right; color: var(--text); font-variant-nu
 [data-preview="badge"] .pv-extra::before { content: ""; position: absolute; left: 50%; top: 50%; width: 26%; height: 46%; border-radius: 50%; border: 2px solid #fff; transform: translate(-50%,-50%) scale(.1); opacity: 0; animation: pv-burst 2s infinite cubic-bezier(.2,.7,.2,1); animation-delay: .35s; }
 
 @media (prefers-reduced-motion: reduce) { .pv * { animation: none !important; } }
+
+/* кнопка обновления */
+.icon-btn.update { color: var(--muted); }
+.icon-btn.update:hover { color: var(--accent); }
+.icon-btn.update:hover .ico { animation: uk-spin .9s linear infinite; }
+@keyframes uk-spin { to { transform: rotate(360deg); } }

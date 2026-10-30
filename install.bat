@@ -32,6 +32,8 @@ if exist "%CEPSRC%\CSXS\manifest.xml" (
         reg add "HKCU\Software\Adobe\CSXS.%%V" /v PlayerDebugMode /t REG_SZ /d 1 /f >nul 2>&1
     )
     echo [OK] PlayerDebugMode=1 (HKCU\Software\Adobe\CSXS.9-12)
+    rem путь к репозиторию — для кнопки «Обновить» в панели
+    > "!CEPDST!\repo_path.txt" echo %~dp0
 ) else (
     echo [--] CEP-панель не найдена в cep\, ставлю только ScriptUI-версию
 )
@@ -69,4 +71,4 @@ echo   - ScriptUI-панель: Window ^> UniKit.jsx
 echo Если панель пустая/не открывается: Edit ^> Preferences ^> Scripting ^& Expressions ^>
 echo   включить "Allow Scripts to Write Files and Access Network", затем перезапустить AE.
 echo.
-pause
+if /i not "%~1"=="/silent" pause
