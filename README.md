@@ -1,12 +1,20 @@
 # UniKit — универсальный тулкит для монтажа в After Effects 2025
 
-Dockable-панель (ScriptUI, один файл `dist/UniKit.jsx`) с библиотекой готовых пресетов в духе
+Панель для AE 2025 (CEP-интерфейс с вкладками, hover-превью и иконками + резервная ScriptUI-версия) с библиотекой готовых пресетов в духе
 Animation Composer / Motion Bro / EditKit / AtomX: анимации появления и исчезновения, переходы,
 эффекты и луки, искажения, свет и лайтсвипы, текстовые анимации, движение камеры и утилиты.
 Один клик — пресет применяется на выделенные слои. Всё строится на штатных эффектах AE
 (включая Cycore CC), никаких внешних плагинов.
 
 ## Установка
+
+### Быстро
+
+Запустите `install.bat`. Он установит CEP-панель в `%APPDATA%\Adobe\CEP\extensions\com.unikit.panel`,
+включит режим неподписанных расширений (PlayerDebugMode в HKCU\Software\Adobe\CSXS.9–12) и положит
+резервную ScriptUI-панель в папки ScriptUI Panels. После перезапуска AE: **Window > Extensions > UniKit**.
+
+### Вручную (ScriptUI-версия)
 
 1. Соберите (или возьмите готовый) `dist/UniKit.jsx`:
    ```
@@ -21,7 +29,17 @@ Animation Composer / Motion Bro / EditKit / AtomX: анимации появле
 4. Если выражения не создаются: Edit > Preferences > Scripting & Expressions →
    включить «Allow Scripts to Write Files and Access Network».
 
-## Использование
+## Панель (CEP)
+
+* Вверху — вкладки категорий с иконками (появление, исчезновение, переходы, эффекты, искажения, свет, текст, камера, утилиты, готовые решения, избранное).
+* Карточки пресетов с анимированным превью при наведении; клик — выбрать, двойной клик или Enter — применить, звезда — в избранное.
+* **Превью** — применяет пресет на выделенный слой в отдельной undo-группе, ставит рабочую область на анимацию и запускает предпросмотр; затем **Оставить** или **Отменить**.
+* Настройки с иконками и подсказками; статус-бар показывает текущее выделение и предупреждает, если пресету нужен текстовый слой или два слоя для перехода.
+* **Готовые решения** — связки появление + лук/свет + уход (или переход + эффекты на склейке): Logo Reveal, Cinematic Clip, Glitch Intro, Lower Third, Vlog Cut, Impact Hit, текстовые заголовки и т.д.
+
+Разработка панели без AE: `node cep/com.unikit.panel/dev/serve.js` → http://localhost:5178 (каталог из `dev/catalog.json`, пересоздать: `node cep/com.unikit.panel/dev/gen_catalog.js`).
+
+## Использование (ScriptUI-версия)
 
 * Выделите слой(и) → выберите категорию в выпадающем списке → двойной клик по пресету (или «Применить»).
 * Поиск ищет по всем категориям сразу (англ. и рус. теги).
@@ -64,17 +82,22 @@ src/
   00_header.jsx     обёртка, полифиллы ES3
   10_core.jsx       ядро UK: реестр, ключи/изинг, эффекты, контролы, контексты, UK.run
   20_ui.jsx         панель ScriptUI
+  15_bridge.jsx     API для CEP-панели: JSON, applyTo/applyTrans для комбо, предпросмотр
   25_examples.jsx   эталонные пресеты
+  28_previews.jsx   карта пресет → ключ CSS-превью
   presets/
     30_in.jsx 31_out.jsx 40_trans.jsx 50_fx.jsx 55_distort.jsx
     60_light.jsx 65_text.jsx 70_cam.jsx 75_util.jsx
+  80_combos.jsx     готовые решения (связки пресетов)
   90_footer.jsx
+cep/com.unikit.panel/ CEP-панель: CSXS/manifest.xml, index.html, css, js, host/ (копия ядра), dev/
 build.js            сборка в dist/UniKit.jsx + проверка на не-ES3 синтаксис
 install.bat         установка в AE
 test/mock_ae.js     мок AE API для node
 test/run.js         прогон всех пресетов через мок (node test/run.js [фильтр])
 test/ae_selftest.jsx  прогон всех пресетов в настоящем AE (File > Scripts > Run Script File)
 docs/API.md         API для написания своих пресетов + match names эффектов
+docs/PREVIEW_KEYS.md ключи CSS-превью
 ```
 
 ## Свои пресеты

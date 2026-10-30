@@ -76,6 +76,7 @@ var UK = {
         { id: 'text',    name: 'Текст' },
         { id: 'cam',     name: 'Камера и движение' },
         { id: 'util',    name: 'Утилиты' },
+        { id: 'combo',   name: 'Готовые решения' },
         { id: 'fav',     name: '★ Избранное' }
     ],
     // Изинги. out1 — влияние исходящей ручки первого ключа, in2 — входящей последнего.
@@ -656,6 +657,208 @@ UK.run = function (presetId, opts) {
 };
 
 
+// ---- src/15_bridge.jsx
+// =============================================================================
+//  Bridge — API для CEP-панели: JSON, применение пресета к конкретному слою,
+//  комбинации (готовые решения), предпросмотр на футаже
+// =============================================================================
+
+// ------------------------------------------------------------------ JSON (ExtendScript без JSON)
+UK.jsonStr = function (s) {
+    s = String(s);
+    var out = '"', i, ch, code;
+    for (i = 0; i < s.length; i++) {
+        ch = s.charAt(i); code = s.charCodeAt(i);
+        if (ch === '"') out += '\\"';
+        else if (ch === '\\') out += '\\\\';
+        else if (ch === '\n') out += '\\n';
+        else if (ch === '\r') out += '\\r';
+        else if (ch === '\t') out += '\\t';
+        else if (code < 32) out += '\\u' + ('000' + code.toString(16)).slice(-4);
+        else out += ch;
+    }
+    return out + '"';
+};
+UK.json = function (v) {
+    if (v === null || v === undefined) return 'null';
+    if (typeof v === 'number') return isFinite(v) ? String(v) : 'null';
+    if (typeof v === 'boolean') return v ? 'true' : 'false';
+    if (typeof v === 'string') return UK.jsonStr(v);
+    if (UK.isArr(v)) {
+        var a = [];
+        for (var i = 0; i < v.length; i++) a.push(UK.json(v[i]));
+        return '[' + a.join(',') + ']';
+    }
+    if (typeof v === 'object') {
+        var o = [];
+        for (var k in v) if (Object.prototype.hasOwnProperty.call(v, k) && typeof v[k] !== 'function') o.push(UK.jsonStr(k) + ':' + UK.json(v[k]));
+        return '{' + o.join(',') + '}';
+    }
+    return 'null';
+};
+/** Очень простой парсер опций из панели: {"dur":0.8,"ease":"expoOut"} и т.д. — через eval. */
+UK.parseOpts = function (s) {
+    if (!s) return UK.defaultOpts();
+    if (typeof s === 'object') return s;
+    var o;
+    try { o = eval('(' + s + ')'); } catch (e) { o = null; }
+    var d = UK.defaultOpts();
+    if (!o) return d;
+    for (var k in d) if (o[k] !== undefined) d[k] = o[k];
+    return d;
+};
+
+// ------------------------------------------------------------------ каталог для панели
+/** Ключ CSS-превью для пресета (UK.PREVIEW заполняется в 28_previews.jsx). */
+UK.PREVIEW = UK.PREVIEW || {};
+UK.previewKey = function (p) {
+    if (p.preview) return p.preview;
+    if (UK.PREVIEW[p.id]) return UK.PREVIEW[p.id];
+    var guess = { 'in': 'fadeIn', out: 'fadeOut', trans: 'dissolve', fx: 'grade', distort: 'wave', light: 'sweep', text: 'textUp', cam: 'camera', util: 'tool', combo: 'combo' };
+    return guess[p.cat] || 'fadeIn';
+};
+UK.catalogJSON = function () {
+    var items = [], i, p;
+    for (i = 0; i < UK.presets.length; i++) {
+        p = UK.presets[i];
+        items.push({ id: p.id, cat: p.cat, name: p.name, desc: p.desc, tags: p.tags, needs: p.needs, preview: UK.previewKey(p), fav: UK.isFav(p.id) });
+    }
+    return UK.json({
+        version: UK.VERSION,
+        cats: UK.CATS,
+        eases: UK.EASES.map(function (e) { return { id: e.id, name: e.name }; }),
+        dirs: UK.DIRS.map(function (d) { return { id: d.id, name: d.name }; }),
+        presets: items,
+        favs: UK.favs(),
+        settings: {
+            dur: UK.settings.get('dur', '0.8'), ease: UK.settings.get('ease', 'expoOut'), strength: UK.settings.get('strength', '100'),
+            dir: UK.settings.get('dir', 'L'), startMode: UK.settings.get('startMode', 'in'), stagger: UK.settings.get('stagger', '0.1'),
+            controls: UK.settings.get('controls', 'true'), adj: UK.settings.get('adj', 'false'), cat: UK.settings.get('cat', 'in')
+        }
+    });
+};
+UK.saveOpts = function (o) {
+    for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) UK.settings.set(k, o[k]);
+};
+
+// ------------------------------------------------------------------ состояние выделения (для панели)
+UK.selectionJSON = function () {
+    var comp = app.project.activeItem;
+    if (!(comp && comp instanceof CompItem)) return UK.json({ comp: false });
+    var ls = UK.selectedLayers(comp), names = [], hasText = false, i;
+    for (i = 0; i < ls.length; i++) { names.push(ls[i].name); if (UK.isText(ls[i])) hasText = true; }
+    return UK.json({ comp: true, compName: comp.name, time: comp.time, count: ls.length, names: names, hasText: hasText });
+};
+
+// ------------------------------------------------------------------ запуск с захватом ошибок (для панели)
+/** Возвращает JSON {ok:true} или {ok:false, error:'...'}; alert'ы ядра перехватываются. */
+UK.runJSON = function (presetId, optsJSON) {
+    var opts = UK.parseOpts(optsJSON);
+    UK.saveOpts(opts);
+    var msgs = [], realAlert = $.global.alert;
+    $.global.alert = function (s) { msgs.push(String(s)); };
+    try { UK.run(presetId, opts); }
+    catch (e) { msgs.push(e.toString()); }
+    $.global.alert = realAlert;
+    return UK.json(msgs.length ? { ok: false, error: msgs.join('\n') } : { ok: true });
+};
+UK.toggleFavJSON = function (id) { return UK.json({ fav: UK.toggleFav(id), favs: UK.favs() }); };
+UK.cleanJSON = function () {
+    var comp = app.project.activeItem;
+    if (!(comp && comp instanceof CompItem)) return UK.json({ ok: false, error: 'Нет композиции' });
+    app.beginUndoGroup(UK.NAME + ': удалить');
+    var ls = UK.selectedLayers(comp), n = 0;
+    for (var i = 0; i < ls.length; i++) n += UK.removeFx(ls[i]);
+    app.endUndoGroup();
+    return UK.json({ ok: true, removed: n });
+};
+
+// ------------------------------------------------------------------ применение к конкретному слою (для комбо)
+/**
+ * Применить пресет напрямую к слою (без обработки выделения).
+ * over — переопределения опций ({dur:0.5, ease:'back', ...}); cat можно переопределить (напр. 'out').
+ */
+UK.applyTo = function (presetId, layer, baseOpts, over, i) {
+    var p = UK.byId[presetId];
+    if (!p) throw new Error('Пресет не найден: ' + presetId);
+    var opts = UK.mergeOpts(baseOpts, over);
+    var comp = layer.containingComp;
+    var ctx = UK.ctxFor(comp, layer, [layer], i || 0, opts, p.cat);
+    p.apply(ctx);
+    return ctx;
+};
+/** Применить переход напрямую к слоям (A, B могут быть null). */
+UK.applyTrans = function (presetId, comp, layers, baseOpts, over) {
+    var p = UK.byId[presetId];
+    if (!p) throw new Error('Пресет не найден: ' + presetId);
+    var opts = UK.mergeOpts(baseOpts, over);
+    var ctx = UK.transCtx(comp, layers, opts);
+    p.apply(ctx);
+    return ctx;
+};
+UK.mergeOpts = function (base, over) {
+    var o = {}, k;
+    base = base || UK.defaultOpts();
+    for (k in base) if (Object.prototype.hasOwnProperty.call(base, k)) o[k] = base[k];
+    if (over) for (k in over) if (Object.prototype.hasOwnProperty.call(over, k)) o[k] = over[k];
+    return o;
+};
+
+// ------------------------------------------------------------------ предпросмотр на футаже
+/**
+ * Применяет пресет в отдельной undo-группе, ставит рабочую область на анимацию
+ * и запускает предпросмотр. Отмена — UK.previewUndo().
+ */
+UK.PREVIEW_GROUP = UK.NAME + ' Preview';
+UK.previewJSON = function (presetId, optsJSON) {
+    var opts = UK.parseOpts(optsJSON);
+    var comp = app.project.activeItem;
+    if (!(comp && comp instanceof CompItem)) return UK.json({ ok: false, error: 'Откройте композицию' });
+    var p = UK.byId[presetId];
+    if (!p) return UK.json({ ok: false, error: 'Пресет не найден' });
+    var layers = UK.selectedLayers(comp);
+    var msgs = [], realAlert = $.global.alert;
+    $.global.alert = function (s) { msgs.push(String(s)); };
+    try {
+        // UK.run сам открывает undo-группу с именем пресета — оборачиваем в свою, чтобы отменять одним шагом
+        app.beginUndoGroup(UK.PREVIEW_GROUP);
+        UK.run(presetId, opts);
+        // рабочая область
+        var dur = Math.max(comp.frameDuration, Number(opts.dur) || 0.8), t0, t1;
+        if (p.needs === 'trans') {
+            var tc = UK.transCtx(comp, layers, opts); t0 = tc.t0 - 0.3; t1 = tc.t1 + 0.3;
+        } else if (layers.length) {
+            var L = UK.sortByIn(layers)[0];
+            if (p.cat === 'out') { t1 = (opts.startMode === 'playhead' ? comp.time : L.outPoint) + 0.2; t0 = t1 - dur - 0.6; }
+            else { t0 = (opts.startMode === 'playhead' ? comp.time : L.inPoint) - 0.2; t1 = t0 + Math.max(dur, 1.5) + 0.6; }
+        } else { t0 = comp.time - 0.5; t1 = comp.time + 1.5; }
+        t0 = Math.max(0, t0); t1 = Math.min(comp.duration, Math.max(t1, t0 + comp.frameDuration * 2));
+        comp.workAreaStart = t0;
+        comp.workAreaDuration = t1 - t0;
+        comp.time = t0;
+        app.endUndoGroup();
+        UK._previewActive = true;
+        // запуск предпросмотра (разные версии AE — разные названия команды)
+        var ids = ['Preview', 'RAM Preview', 'Play Current Preview'], started = false;
+        for (var i = 0; i < ids.length && !started; i++) {
+            try { var cid = app.findMenuCommandId(ids[i]); if (cid) { app.executeCommand(cid); started = true; } } catch (e) {}
+        }
+        if (!started) { try { app.executeCommand(2131); started = true; } catch (e2) {} } // RAM Preview (старый id)
+    } catch (e3) { msgs.push(e3.toString()); try { app.endUndoGroup(); } catch (e4) {} }
+    $.global.alert = realAlert;
+    return UK.json(msgs.length ? { ok: false, error: msgs.join('\n') } : { ok: true, active: true });
+};
+/** Отменить последний предпросмотр (Undo). */
+UK.previewUndoJSON = function () {
+    if (!UK._previewActive) return UK.json({ ok: true, undone: false });
+    try { app.executeCommand(16); } catch (e) { return UK.json({ ok: false, error: e.toString() }); } // 16 = Undo
+    UK._previewActive = false;
+    return UK.json({ ok: true, undone: true });
+};
+/** Оставить предпросмотр как результат. */
+UK.previewKeepJSON = function () { UK._previewActive = false; return UK.json({ ok: true }); };
+
+
 // ---- src/20_ui.jsx
 // =============================================================================
 //  UI — dockable ScriptUI панель
@@ -987,6 +1190,172 @@ UK.buildUI = function (thisObj) {
         apply: function (c) { UK.removeFx(c.layer); }
     });
 
+})();
+
+
+// ---- src/28_previews.jsx
+// =============================================================================
+//  Карта CSS-превью: id пресета -> ключ из docs/PREVIEW_KEYS.md
+// =============================================================================
+UK.PREVIEW = UK.PREVIEW || {};
+(function () {
+    var P = UK.PREVIEW;
+    function set(key, ids) { for (var i = 0; i < ids.length; i++) P[ids[i]] = key; }
+
+    // ---- In
+    set('fadeIn',  ['in.fade', 'in.fadeSlide', 'in.flicker']);
+    set('slideIn', ['in.slide', 'in.maskSlide', 'in.diagonal', 'in.dirBlurSlide', 'in.skewSlide', 'in.slideRotate']);
+    set('scaleIn', ['in.scalePop', 'in.scaleSoft', 'in.zoomFar', 'in.zoomBlur']);
+    set('popIn',   ['in.scaleOvershoot', 'in.shadowPop']);
+    set('elastic', ['in.elasticPop']);
+    set('spin',    ['in.spin', 'in.spinZoom']);
+    set('flip',    ['in.flipX', 'in.flipY']);
+    set('blurIn',  ['in.blur', 'in.riseBlur']);
+    set('wipe',    ['in.linearWipe', 'in.softWipe', 'in.maskReveal', 'in.curtain']);
+    set('blinds',  ['in.blinds']);
+    set('iris',    ['in.radialWipe', 'in.iris']);
+    set('pixel',   ['in.blockDissolve', 'in.pixelate']);
+    set('bounce',  ['in.dropBounce']);
+    set('squash',  ['in.squashStretch']);
+    set('roll',    ['in.roll']);
+    set('swing',   ['in.swing']);
+    set('stretch', ['in.stretch', 'in.unfold']);
+    set('glitch',  ['in.glitch']);
+    set('flash',   ['in.flash']);
+
+    // ---- Out
+    set('fadeOut',  ['out.fade', 'out.fadeSlide', 'out.flicker']);
+    set('slideOut', ['out.slide', 'out.maskSlide', 'out.diagonal', 'out.dirBlurSlide', 'out.skewSlide', 'out.slideRotate']);
+    set('scaleOut', ['out.scale', 'out.scaleSoft', 'out.scaleUp', 'out.zoomFar', 'out.zoomBlur']);
+    set('popOut',   ['out.pop', 'out.shadowPop']);
+    set('spin',     ['out.spin', 'out.spinZoom']);
+    set('flip',     ['out.flipX', 'out.flipY']);
+    set('blurOut',  ['out.blur', 'out.riseBlur']);
+    set('wipe',     ['out.linearWipe', 'out.softWipe', 'out.maskReveal', 'out.curtain']);
+    set('blinds',   ['out.blinds']);
+    set('iris',     ['out.radialWipe', 'out.iris']);
+    set('pixel',    ['out.blockDissolve', 'out.pixelate']);
+    set('bounce',   ['out.dropFall']);
+    set('squash',   ['out.squashStretch']);
+    set('roll',     ['out.roll']);
+    set('swing',    ['out.swing']);
+    set('stretch',  ['out.stretch', 'out.fold']);
+    set('glitch',   ['out.glitch']);
+    set('flash',    ['out.flash']);
+
+    // ---- Transitions
+    set('zoom',     ['trans.zoomBlur', 'trans.zoomIn', 'trans.zoomOut', 'trans.zoomPunch', 'trans.punch', 'trans.bounceZoom', 'trans.zoomThrough', 'trans.chromaZoom']);
+    set('spin',     ['trans.spin', 'trans.zoomSpin', 'trans.rotateSwap', 'trans.twister']);
+    set('whip',     ['trans.whipPan', 'trans.offsetPan', 'trans.dirBlur', 'trans.slideBlur']);
+    set('roll',     ['trans.roll']);
+    set('dissolve', ['trans.gaussBlur', 'trans.crossfade', 'trans.blurFade']);
+    set('glitch',   ['trans.glitch']);
+    set('rgb',      ['trans.rgbSplit']);
+    set('pixel',    ['trans.pixelate', 'trans.blockDissolve', 'trans.gridWipe']);
+    set('twist',    ['trans.twist']);
+    set('ripple',   ['trans.ripple']);
+    set('bulge',    ['trans.bulge', 'trans.lensDistort', 'trans.fisheye', 'trans.spherize']);
+    set('mirror',   ['trans.mirrorSplit']);
+    set('kaleido',  ['trans.kaleida']);
+    set('stretch',  ['trans.warpStretch', 'trans.squeeze', 'trans.scaleWipe']);
+    set('shake',    ['trans.shake']);
+    set('flash',    ['trans.flash', 'trans.dipBlack', 'trans.dipColor', 'trans.negFlash', 'trans.lightWipe']);
+    set('leak',     ['trans.lightLeak', 'trans.filmBurn']);
+    set('wave',     ['trans.wave', 'trans.turbulent']);
+    set('push',     ['trans.push', 'trans.slideCover', 'trans.slideReveal']);
+    set('flip',     ['trans.flip3D']);
+    set('scaleIn',  ['trans.scaleSwap']);
+    set('wipe',     ['trans.linearWipe', 'trans.jaws', 'trans.lineSweep', 'trans.stripes']);
+    set('iris',     ['trans.radialWipe', 'trans.irisWipe', 'trans.radialScaleWipe']);
+    set('blinds',   ['trans.blinds']);
+
+    // ---- FX
+    set('grade',    ['fx.tealOrange', 'fx.cinematic', 'fx.vintage', 'fx.bwContrast', 'fx.sepia', 'fx.duotone', 'fx.crossProcess', 'fx.bleach', 'fx.warm', 'fx.cool', 'fx.cyberpunk', 'fx.pastel', 'fx.colorPop', 'fx.exposure', 'fx.posterize', 'fx.invert', 'fx.threshold', 'fx.cartoon', 'fx.sketch', 'fx.emboss']);
+    set('rgb',      ['fx.vhs', 'fx.chromatic']);
+    set('grain',    ['fx.filmGrain', 'fx.addGrain', 'fx.oldFilm', 'fx.dotMatrix']);
+    set('vignette', ['fx.vignette', 'fx.softEdge']);
+    set('letterbox',['fx.letterbox']);
+    set('glow',     ['fx.glow', 'fx.bloom', 'fx.neon', 'fx.sharpen', 'fx.lensFlare']);
+    set('shadow',   ['fx.longShadow', 'fx.dropShadow']);
+    set('pixel',    ['fx.pixelate']);
+    set('mirror',   ['fx.mirror']);
+    set('kaleido',  ['fx.kaleidoscope']);
+    set('echo',     ['fx.echo', 'fx.motionBlurBoost']);
+    set('strobe',   ['fx.stopMotion', 'fx.strobe', 'fx.flicker', 'fx.tvOff']);
+    set('shake',    ['fx.shake', 'fx.shakeHit']);
+    set('elastic',  ['fx.pulse']);
+    set('blinds',   ['fx.scanlines']);
+    set('blurIn',   ['fx.dreamy', 'fx.tiltShift', 'fx.blur', 'fx.focusPull']);
+    set('zoom',     ['fx.zoomBlur', 'fx.zoomHit']);
+    set('whip',     ['fx.dirBlur']);
+    set('glitch',   ['fx.glitchHit']);
+    set('flash',    ['fx.flashHit']);
+
+    // ---- Distort
+    set('wave',    ['distort.turbSoft', 'distort.turbHard', 'distort.turbVertical', 'distort.heatHaze', 'distort.wave', 'distort.water', 'distort.smoke']);
+    set('rgb',     ['distort.rgbWave']);
+    set('ripple',  ['distort.ripple']);
+    set('twist',   ['distort.twirl', 'distort.twirlSpin', 'distort.wobbleRot']);
+    set('bulge',   ['distort.bulge', 'distort.pinch', 'distort.spherize', 'distort.fisheye', 'distort.lensCorrect', 'distort.ccLens', 'distort.magnify']);
+    set('mirror',  ['distort.mirrorSplit', 'distort.quadMirror', 'distort.tiler']);
+    set('kaleido', ['distort.kaleida', 'distort.polar', 'distort.tinyPlanet']);
+    set('stretch', ['distort.slant', 'distort.skew', 'distort.perspective', 'distort.zoomStretch', 'distort.pixelStretch', 'distort.bendIt', 'distort.floMotion']);
+    set('elastic', ['distort.jelly']);
+    set('squash',  ['distort.squash']);
+    set('liquid',  ['distort.liquid']);
+    set('glitch',  ['distort.glitchDisp']);
+
+    // ---- Light
+    set('sweep',  ['light.sweepSoft', 'light.sweepSharp', 'light.sweepDiag', 'light.sweepDouble', 'light.sweepLoop', 'light.sweepColor', 'light.sweepEdge', 'light.shine', 'light.flarePass', 'light.flashlight']);
+    set('rays',   ['light.godRays', 'light.rayBurst', 'light.spotlight']);
+    set('leak',   ['light.leak']);
+    set('glow',   ['light.glowPulse', 'light.bokehGlow', 'light.rimLight']);
+    set('strobe', ['light.neonFlicker', 'light.strobe']);
+    set('flash',  ['light.flashHit']);
+
+    // ---- Text
+    set('typewriter', ['text.typewriter', 'text.typingCursor', 'text.typewriterOut', 'text.scramble']);
+    set('fadeIn',     ['text.fadeChars', 'text.fadeWords', 'text.fadeLines', 'text.randomFade', 'text.colorWipe']);
+    set('textUp',     ['text.linesSlideUp', 'text.charsSlideUp', 'text.slideChars', 'text.charsDrop', 'text.bounceLetters', 'text.skewIn', 'text.trackingIn', 'text.wave', 'text.jitter']);
+    set('textScale',  ['text.charsPop', 'text.charsBlur', 'text.charsRotate', 'text.zoomWords']);
+    set('flip',       ['text.flip3D']);
+    set('fadeOut',    ['text.fadeOutChars', 'text.fadeOutWords', 'text.trackingOut']);
+    set('scaleOut',   ['text.scaleOut', 'text.rotateOut']);
+    set('blurOut',    ['text.blurOut']);
+    set('slideOut',   ['text.slideOut', 'text.dropOut']);
+    set('counter',    ['text.counter']);
+
+    // ---- Camera
+    set('shake',  ['cam.handheld', 'cam.earthquake', 'cam.impact', 'cam.whipHit']);
+    set('zoom',   ['cam.pushIn', 'cam.pushOut', 'cam.zoomBeat', 'cam.dollyZoom']);
+    set('camera', ['cam.kenBurnsIn', 'cam.kenBurnsOut', 'cam.drift', 'cam.breathe', 'cam.follow']);
+    set('blurIn', ['cam.rackFocus']);
+    set('pan',    ['cam.pan']);
+    set('orbit',  ['cam.orbit3D', 'cam.tilt3D']);
+    set('spin',   ['cam.spinIn']);
+
+    // ---- Utils
+    set('tool', ['util.removeUK', 'util.stagger', 'util.sequence', 'util.trimToPlayhead', 'util.autoFade', 'util.freeze', 'util.reverse', 'util.loopCycle', 'util.loopPingPong', 'util.bakeExpr', 'util.centerAnchor', 'util.fitToComp', 'util.adjOver', 'util.parentNull', 'util.precomposeEach', 'util.motionBlur', 'util.toggle3D', 'util.solo', 'util.removeAllFx', 'util.marker']);
+
+    // ---- Combo
+    set('combo',  ['combo.logoReveal', 'combo.lowerThird', 'combo.socialPop', 'combo.corporate', 'combo.product', 'combo.flipCard', 'combo.lightReveal', 'combo.stopMotion', 'combo.cleanPhoto', 'combo.comic', 'combo.gamer', 'combo.textHeadline', 'combo.textElegant', 'combo.textBouncy']);
+    set('camera', ['combo.cinematicClip', 'combo.slideshow', 'combo.documentary']);
+    set('glitch', ['combo.glitchIntro', 'combo.cyberpunk', 'combo.textGlitch', 'combo.glitchCut']);
+    set('rgb',    ['combo.retroVHS']);
+    set('blurIn', ['combo.dreamy', 'combo.dreamCut']);
+    set('glow',   ['combo.neonSign']);
+    set('vignette', ['combo.horror']);
+    set('elastic', ['combo.promo']);
+    set('liquid', ['combo.liquidMorph']);
+    set('blinds', ['combo.hudTech']);
+    set('grain',  ['combo.oldFilmReel']);
+    set('typewriter', ['combo.textTypewriter']);
+    set('textScale',  ['combo.textKinetic']);
+    set('counter',    ['combo.textCounter']);
+    set('whip',   ['combo.vlogCut', 'combo.whipStack', 'combo.pushStack']);
+    set('zoom',   ['combo.impactHit', 'combo.smoothZoom', 'combo.lensCut']);
+    set('leak',   ['combo.filmBurnCut']);
+    set('spin',   ['combo.spinCut']);
 })();
 
 
@@ -6072,6 +6441,542 @@ UK.buildUI = function (thisObj) {
         tags: 'marker маркер курсор',
         apply: function (c) {
             c.layer.property('ADBE Marker').setValueAtTime(c.comp.time, new MarkerValue('UK'));
+        }
+    });
+
+})();
+
+
+// ---- src/80_combos.jsx
+// =============================================================================
+//  Готовые решения (combo) — связки пресетов: появление + лук/эффект + свет + уход
+// =============================================================================
+(function () {
+
+    // ---- хелперы
+    /** Длина слоя. */
+    function span(L) { return Math.max(0, L.outPoint - L.inPoint); }
+    /** Длительность части: k × c.dur, но не больше 1/2.5 слоя и не меньше 2 кадров. */
+    function part(c, k, L) {
+        L = L || c.layer;
+        var lim = span(L) / 2.5;
+        return Math.max(c.fd * 2, Math.min(c.dur * (k || 1), lim > 0 ? lim : c.dur * (k || 1)));
+    }
+    /** Применить пресет к слою (по умолчанию c.layer) с переопределениями. */
+    function at(c, id, over, L) { return UK.applyTo(id, L || c.layer, c.opts, over || {}, c.i); }
+    /** Появление: от границы слоя или курсора (как выбрал пользователь). */
+    function inAt(c, id, k, over, L) { return at(c, id, UK.mergeOpts({ dur: part(c, k, L) }, over), L); }
+    /** Уход: всегда к out-point слоя, без каскада. */
+    function outAt(c, id, k, over, L) { return at(c, id, UK.mergeOpts({ dur: part(c, k, L), startMode: 'in', stagger: 0 }, over), L); }
+    /** Постоянный эффект/лук на слой. */
+    function fx(c, id, over, L) { return at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), L); }
+    /** Событие в заданное время (через временный курсор). */
+    function atTime(c, id, t, over, L) {
+        var comp = c.comp, old = comp.time;
+        t = UK.clamp(t, 0, comp.duration);
+        comp.time = t;
+        try { at(c, id, UK.mergeOpts({ startMode: 'playhead', stagger: 0 }, over), L); }
+        finally { comp.time = old; }
+    }
+    /** Старт появления слоя (учитывает режим курсора и каскад). */
+    function startT(c, L) { L = L || c.layer; return (c.opts.startMode === 'playhead' ? c.comp.time : L.inPoint) + (Number(c.opts.stagger) || 0) * c.i; }
+    /** Переход. */
+    function tr(c, id, over) { return UK.applyTrans(id, c.comp, c.layers, c.opts, over || {}); }
+    /** Эффект на слой перехода (A/B), если он есть. */
+    function onB(c, id, over) { if (c.B) at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), c.B); }
+    function onA(c, id, over) { if (c.A) at(c, id, UK.mergeOpts({ startMode: 'in', stagger: 0 }, over), c.A); }
+    var weak = function (k) { return { strength: Math.round(k * 100) }; };
+
+    // =========================================================== слой
+    UK.add({
+        id: 'combo.logoReveal', cat: 'combo', name: 'Logo Reveal · Появление логотипа',
+        desc: 'Scale Pop (Back) → Glow → Light Sweep в конце появления → мягкий Fade Out. Готовая анимация логотипа.',
+        tags: 'logo reveal glow sweep логотип готовое',
+        apply: function (c) {
+            var din = part(c, 1);
+            inAt(c, 'in.scalePop', 1, { ease: 'back' });
+            fx(c, 'fx.glow', weak(0.7 * c.strength));
+            atTime(c, 'light.sweepSoft', startT(c) + din * 0.7, { dur: din * 0.9 });
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.cinematicClip', cat: 'combo', name: 'Cinematic Clip · Кино-клип',
+        desc: 'Ken Burns In + Cinematic look + Vignette + Film Grain + Fade In/Out. Для футажа и фото.',
+        tags: 'cinematic clip ken burns vignette grain кино футаж',
+        apply: function (c) {
+            fx(c, 'cam.kenBurnsIn', weak(0.8 * c.strength));
+            fx(c, 'fx.cinematic', weak(0.9 * c.strength));
+            fx(c, 'fx.vignette', weak(0.8 * c.strength));
+            fx(c, 'fx.filmGrain', weak(0.6 * c.strength));
+            inAt(c, 'in.fade', 0.8, { ease: 'smooth' });
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.glitchIntro', cat: 'combo', name: 'Glitch Intro · Глитч-интро',
+        desc: 'Glitch In → Chromatic aberration → Glitch Hit перед концом → Glitch Out.',
+        tags: 'glitch intro chromatic rgb глитч интро',
+        apply: function (c) {
+            var dout = part(c, 0.8), hit = Math.min(0.35, part(c, 0.4));
+            inAt(c, 'in.glitch', 1);
+            fx(c, 'fx.chromatic', weak(0.6 * c.strength));
+            atTime(c, 'fx.glitchHit', c.layer.outPoint - dout - hit - c.fd, { dur: hit });
+            outAt(c, 'out.glitch', 0.8);
+        }
+    });
+
+    UK.add({
+        id: 'combo.lowerThird', cat: 'combo', name: 'Lower Third · Титр-плашка',
+        desc: 'Короткий Fade + Slide по направлению → Drop Shadow → Fade + Slide Out в ту же сторону.',
+        tags: 'lower third title плашка титр slide shadow',
+        apply: function (c) {
+            inAt(c, 'in.fadeSlide', 1, { ease: 'expoOut' });
+            fx(c, 'fx.dropShadow', weak(0.7 * c.strength));
+            outAt(c, 'out.fadeSlide', 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.socialPop', cat: 'combo', name: 'Social Pop · Стикер для соцсетей',
+        desc: 'Elastic Pop → Shadow Pop → Pulse (лёгкий бит) → Pop Out. Для стикеров, эмодзи, плашек.',
+        tags: 'social pop sticker elastic bounce стикер соцсети',
+        apply: function (c) {
+            inAt(c, 'in.elasticPop', 1);
+            inAt(c, 'in.shadowPop', 1, weak(0.6));
+            fx(c, 'fx.pulse', weak(0.35 * c.strength));
+            outAt(c, 'out.pop', 0.7, { ease: 'back' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.slideshow', cat: 'combo', name: 'Photo Slideshow · Слайдшоу',
+        desc: 'Ken Burns (чередует наезд/отъезд по слоям) + Vignette + Fade In/Out. Выделите все фото и примените разом.',
+        tags: 'slideshow photo ken burns слайдшоу фото',
+        apply: function (c) {
+            fx(c, (c.i % 2 === 0) ? 'cam.kenBurnsIn' : 'cam.kenBurnsOut');
+            fx(c, 'fx.vignette', weak(0.6 * c.strength));
+            inAt(c, 'in.fade', 1, { ease: 'smooth', stagger: 0 });
+            outAt(c, 'out.fade', 1, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.retroVHS', cat: 'combo', name: 'Retro VHS · Ретро-кассета',
+        desc: 'VHS look + Old Film (зерно, мерцание) + Scanlines + Glitch In/Out.',
+        tags: 'vhs retro 90s tape ретро кассета',
+        apply: function (c) {
+            fx(c, 'fx.vhs', weak(0.9 * c.strength));
+            fx(c, 'fx.oldFilm', weak(0.4 * c.strength));
+            fx(c, 'fx.scanlines', weak(0.5 * c.strength));
+            inAt(c, 'in.glitch', 0.8);
+            outAt(c, 'out.glitch', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.dreamy', cat: 'combo', name: 'Dreamy · Сон / воспоминание',
+        desc: 'Blur In → Dreamy soft focus → Warm фильтр → Blur Out.',
+        tags: 'dreamy soft focus warm сон воспоминание flashback',
+        apply: function (c) {
+            inAt(c, 'in.blur', 1.2, { ease: 'smooth' });
+            fx(c, 'fx.dreamy', weak(0.7 * c.strength));
+            fx(c, 'fx.warm', weak(0.6 * c.strength));
+            outAt(c, 'out.blur', 1, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.neonSign', cat: 'combo', name: 'Neon Sign · Неоновая вывеска',
+        desc: 'Flash In → Neon Glow → Neon Flicker → Fade Out.',
+        tags: 'neon sign glow flicker неон вывеска',
+        apply: function (c) {
+            inAt(c, 'in.flash', 0.6);
+            fx(c, 'fx.neon', weak(0.9 * c.strength));
+            fx(c, 'light.neonFlicker', weak(0.7 * c.strength));
+            outAt(c, 'out.fade', 0.6, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.corporate', cat: 'combo', name: 'Clean Corporate · Чистый корпоратив',
+        desc: 'Fade + Slide In → мягкая тень → лёгкий Cinematic → Fade + Slide Out. Сдержанно и аккуратно.',
+        tags: 'corporate clean business чистый корпоративный',
+        apply: function (c) {
+            inAt(c, 'in.fadeSlide', 1, { ease: 'soft', strength: 60 * c.strength });
+            fx(c, 'fx.dropShadow', weak(0.4 * c.strength));
+            fx(c, 'fx.cinematic', weak(0.35 * c.strength));
+            outAt(c, 'out.fadeSlide', 0.8, { ease: 'soft', strength: 60 * c.strength });
+        }
+    });
+
+    UK.add({
+        id: 'combo.horror', cat: 'combo', name: 'Horror / Dark · Хоррор',
+        desc: 'Flicker In → сильная Vignette → Film Grain → обесцвечивание (B&W слабо) → Flicker Out.',
+        tags: 'horror dark scary flicker хоррор тёмный',
+        apply: function (c) {
+            inAt(c, 'in.flicker', 1);
+            fx(c, 'fx.vignette', weak(1.6 * c.strength));
+            fx(c, 'fx.filmGrain', weak(1.1 * c.strength));
+            fx(c, 'fx.bwContrast', weak(0.5 * c.strength));
+            fx(c, 'fx.flicker', weak(0.5 * c.strength));
+            outAt(c, 'out.flicker', 0.8);
+        }
+    });
+
+    UK.add({
+        id: 'combo.promo', cat: 'combo', name: 'Energetic Promo · Энергичное промо',
+        desc: 'Squash & Stretch In → Pulse в бит → лёгкий Shake → Spin Out.',
+        tags: 'promo energetic beat pulse промо энергичный',
+        apply: function (c) {
+            inAt(c, 'in.squashStretch', 1, { ease: 'back' });
+            fx(c, 'fx.pulse', weak(0.6 * c.strength));
+            fx(c, 'fx.shake', weak(0.3 * c.strength));
+            outAt(c, 'out.spin', 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.product', cat: 'combo', name: 'Product Showcase · Витрина продукта',
+        desc: 'Scale Soft In → 3D Tilt → Rim Light → Light Sweep → Scale Out.',
+        tags: 'product showcase 3d tilt rim light продукт витрина',
+        apply: function (c) {
+            var din = part(c, 1);
+            inAt(c, 'in.scaleSoft', 1, { ease: 'soft' });
+            fx(c, 'cam.tilt3D', weak(0.6 * c.strength));
+            fx(c, 'light.rimLight', weak(0.8 * c.strength));
+            atTime(c, 'light.sweepSoft', startT(c) + din * 0.9, { dur: din });
+            outAt(c, 'out.scaleSoft', 0.8, { ease: 'soft' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.cyberpunk', cat: 'combo', name: 'Cyberpunk · Киберпанк',
+        desc: 'Glitch In → Cyberpunk look → Scanlines → Chromatic → Glitch Out.',
+        tags: 'cyberpunk neon glitch scanlines киберпанк',
+        apply: function (c) {
+            inAt(c, 'in.glitch', 1);
+            fx(c, 'fx.cyberpunk', weak(0.9 * c.strength));
+            fx(c, 'fx.scanlines', weak(0.4 * c.strength));
+            fx(c, 'fx.chromatic', weak(0.5 * c.strength));
+            outAt(c, 'out.glitch', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.flipCard', cat: 'combo', name: '3D Flip Card · Карточка',
+        desc: 'Flip Y In → Drop Shadow → Flip Y Out. Для карточек, цитат, фото.',
+        tags: 'flip card 3d карточка переворот',
+        apply: function (c) {
+            inAt(c, 'in.flipY', 1, { ease: 'expoOut' });
+            fx(c, 'fx.dropShadow', weak(0.6 * c.strength));
+            outAt(c, 'out.flipY', 0.8, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.lightReveal', cat: 'combo', name: 'Light Reveal · Световое появление',
+        desc: 'Flash In → God Rays → Glow Pulse → Fade Out.',
+        tags: 'light reveal rays glow свет появление лучи',
+        apply: function (c) {
+            inAt(c, 'in.flash', 0.8);
+            fx(c, 'light.godRays', weak(0.8 * c.strength));
+            fx(c, 'light.glowPulse', weak(0.6 * c.strength));
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.documentary', cat: 'combo', name: 'Handheld Documentary · Документалка',
+        desc: 'Handheld shake → Vintage look → Fade In/Out на границах слоя.',
+        tags: 'handheld documentary vintage документальный ручная камера',
+        apply: function (c) {
+            fx(c, 'cam.handheld', weak(0.6 * c.strength));
+            fx(c, 'fx.vintage', weak(0.7 * c.strength));
+            inAt(c, 'in.fade', 0.8, { ease: 'smooth' });
+            outAt(c, 'out.fade', 0.8, { ease: 'smooth' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.stopMotion', cat: 'combo', name: 'Stop-Motion · Покадровая',
+        desc: 'Stop Motion (12 fps) → Film Grain → Scale Pop In / Pop Out.',
+        tags: 'stop motion frame rate grain покадровая',
+        apply: function (c) {
+            fx(c, 'fx.stopMotion');
+            fx(c, 'fx.filmGrain', weak(0.8 * c.strength));
+            inAt(c, 'in.scalePop', 0.8, { ease: 'back' });
+            outAt(c, 'out.pop', 0.7, { ease: 'back' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.liquidMorph', cat: 'combo', name: 'Liquid Morph · Жидкий',
+        desc: 'Liquid displacement → Rise Blur In → Blur Out. Текучая органика.',
+        tags: 'liquid morph wave organic жидкий органика',
+        apply: function (c) {
+            fx(c, 'distort.liquid', weak(0.8 * c.strength));
+            inAt(c, 'in.riseBlur', 1.1, { ease: 'soft' });
+            outAt(c, 'out.riseBlur', 0.9, { ease: 'soft' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.cleanPhoto', cat: 'combo', name: 'Clean Photo · Фото с рамкой света',
+        desc: 'Zoom Far In → Teal & Orange → Light Sweep → Soft Wipe Out.',
+        tags: 'photo teal orange sweep фото',
+        apply: function (c) {
+            var din = part(c, 1);
+            inAt(c, 'in.zoomFar', 1, { ease: 'expoOut' });
+            fx(c, 'fx.tealOrange', weak(0.7 * c.strength));
+            atTime(c, 'light.sweepSharp', startT(c) + din, { dur: din * 0.8 });
+            outAt(c, 'out.softWipe', 0.8);
+        }
+    });
+
+    UK.add({
+        id: 'combo.hudTech', cat: 'combo', name: 'HUD / Tech · Техно-интерфейс',
+        desc: 'Blinds In → Cool фильтр → Scanlines → Flicker → Blinds Out.',
+        tags: 'hud tech interface sci-fi техно интерфейс',
+        apply: function (c) {
+            inAt(c, 'in.blinds', 0.8);
+            fx(c, 'fx.cool', weak(0.6 * c.strength));
+            fx(c, 'fx.scanlines', weak(0.5 * c.strength));
+            fx(c, 'fx.flicker', weak(0.3 * c.strength));
+            outAt(c, 'out.blinds', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.comic', cat: 'combo', name: 'Comic Pop · Комикс',
+        desc: 'Drop Bounce In → Cartoon → Long Shadow → Squash & Stretch Out.',
+        tags: 'comic cartoon pop art комикс мультфильм',
+        apply: function (c) {
+            inAt(c, 'in.dropBounce', 1);
+            fx(c, 'fx.cartoon', weak(0.8 * c.strength));
+            fx(c, 'fx.longShadow', weak(0.7 * c.strength));
+            outAt(c, 'out.squashStretch', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.oldFilmReel', cat: 'combo', name: 'Old Film Reel · Старая плёнка',
+        desc: 'Flash In → Old Film (сепия, зерно, мерцание) → Letterbox → Film Burn-подобный Flash Out.',
+        tags: 'old film sepia reel letterbox старая плёнка',
+        apply: function (c) {
+            inAt(c, 'in.flash', 0.5);
+            fx(c, 'fx.oldFilm', weak(0.9 * c.strength));
+            fx(c, 'fx.letterbox', weak(0.8));
+            outAt(c, 'out.flash', 0.5);
+        }
+    });
+
+    UK.add({
+        id: 'combo.gamer', cat: 'combo', name: 'Gamer Stream · Стрим-оверлей',
+        desc: 'Skew Slide In → Neon Glow → Pulse → Chromatic → Skew Slide Out.',
+        tags: 'gamer stream overlay twitch оверлей стрим',
+        apply: function (c) {
+            inAt(c, 'in.skewSlide', 0.9, { ease: 'expoOut' });
+            fx(c, 'fx.neon', weak(0.6 * c.strength));
+            fx(c, 'fx.pulse', weak(0.4 * c.strength));
+            fx(c, 'fx.chromatic', weak(0.4 * c.strength));
+            outAt(c, 'out.skewSlide', 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    // =========================================================== текст
+    UK.add({
+        id: 'combo.textHeadline', cat: 'combo', name: 'Text Headline · Заголовок',
+        desc: 'Буквы выезжают снизу + Tracking In → Shine (блик) → Fade Out по буквам.',
+        tags: 'text headline title заголовок буквы блик', needs: 'text',
+        apply: function (c) {
+            var din = part(c, 1);
+            inAt(c, 'text.charsSlideUp', 1);
+            inAt(c, 'text.trackingIn', 1.2, weak(0.6 * c.strength));
+            atTime(c, 'light.shine', startT(c) + din, { dur: din });
+            outAt(c, 'text.fadeOutChars', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.textTypewriter', cat: 'combo', name: 'Text Typewriter · Печатная машинка',
+        desc: 'Печать текста с мигающим курсором → Fade Out по словам.',
+        tags: 'text typewriter cursor печать машинка', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.typingCursor', 1.5);
+            outAt(c, 'text.fadeOutWords', 0.6);
+        }
+    });
+
+    UK.add({
+        id: 'combo.textKinetic', cat: 'combo', name: 'Kinetic Text · Кинетический текст',
+        desc: 'Zoom Words (слова влетают из глубины) → Chromatic → Scale Out.',
+        tags: 'kinetic text zoom words кинетический', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.zoomWords', 1, { ease: 'expoOut' });
+            fx(c, 'fx.chromatic', weak(0.5 * c.strength));
+            outAt(c, 'text.scaleOut', 0.7, { ease: 'expoIn' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.textGlitch', cat: 'combo', name: 'Glitch Text · Глитч-текст',
+        desc: 'Scramble (декодирование) → Chromatic → Jitter → Glitch Out слоя.',
+        tags: 'glitch text scramble decode глитч текст', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.scramble', 1.2);
+            fx(c, 'fx.chromatic', weak(0.6 * c.strength));
+            fx(c, 'text.jitter', weak(0.4 * c.strength));
+            outAt(c, 'out.glitch', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.textElegant', cat: 'combo', name: 'Elegant Title · Элегантный титр',
+        desc: 'Blur In по буквам + Tracking In → мягкая тень → Blur Out по буквам.',
+        tags: 'elegant title wedding blur titles элегантный титр', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.charsBlur', 1.3, { ease: 'soft' });
+            inAt(c, 'text.trackingIn', 1.5, weak(0.5 * c.strength));
+            fx(c, 'fx.dropShadow', weak(0.4 * c.strength));
+            outAt(c, 'text.blurOut', 1, { ease: 'soft' });
+        }
+    });
+
+    UK.add({
+        id: 'combo.textBouncy', cat: 'combo', name: 'Bouncy Text · Прыгучий текст',
+        desc: 'Bounce Letters → Long Shadow → Drop Out по буквам.',
+        tags: 'bouncy text bounce letters прыгучий', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'text.bounceLetters', 1);
+            fx(c, 'fx.longShadow', weak(0.6 * c.strength));
+            outAt(c, 'text.dropOut', 0.7);
+        }
+    });
+
+    UK.add({
+        id: 'combo.textCounter', cat: 'combo', name: 'Number Counter · Счётчик',
+        desc: 'Fade + Slide In → Counter (число растёт) → Fade Out.',
+        tags: 'counter number statistics счётчик число', needs: 'text',
+        apply: function (c) {
+            inAt(c, 'in.fadeSlide', 0.6, { ease: 'expoOut' });
+            inAt(c, 'text.counter', 2);
+            outAt(c, 'out.fade', 0.6);
+        }
+    });
+
+    // =========================================================== переходы
+    UK.add({
+        id: 'combo.vlogCut', cat: 'combo', name: 'Vlog Cut · Влог-склейка',
+        desc: 'Whip Pan по направлению + Flash на склейке + Handheld на входящем слое.',
+        tags: 'vlog cut whip pan flash handheld влог склейка', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.whipPan');
+            tr(c, 'trans.flash', { strength: 60 * c.strength, dur: c.dur * 0.5 });
+            onB(c, 'cam.handheld', weak(0.5 * c.strength));
+        }
+    });
+
+    UK.add({
+        id: 'combo.impactHit', cat: 'combo', name: 'Impact Hit · Удар',
+        desc: 'Zoom Punch + Shake + Flash + Chromatic Zoom — мощный акцент на склейке.',
+        tags: 'impact hit punch shake flash удар акцент', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.zoomPunch');
+            tr(c, 'trans.shake', weak(0.8 * c.strength));
+            tr(c, 'trans.chromaZoom', weak(0.6 * c.strength));
+            tr(c, 'trans.flash', { strength: 70 * c.strength, dur: c.dur * 0.4 });
+        }
+    });
+
+    UK.add({
+        id: 'combo.smoothZoom', cat: 'combo', name: 'Smooth Zoom · Плавный зум',
+        desc: 'Zoom In + Directional Blur + тёплый Light Leak. Мягкий «блогерский» переход.',
+        tags: 'smooth zoom blur light leak плавный зум', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.zoomIn');
+            tr(c, 'trans.dirBlur', weak(0.6 * c.strength));
+            tr(c, 'trans.lightLeak', weak(0.8 * c.strength));
+        }
+    });
+
+    UK.add({
+        id: 'combo.filmBurnCut', cat: 'combo', name: 'Film Burn Cut · Прожиг плёнки',
+        desc: 'Film Burn + Light Leak + Warm на входящем слое.',
+        tags: 'film burn leak warm прожиг плёнка', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.filmBurn');
+            tr(c, 'trans.lightLeak', weak(0.7 * c.strength));
+            onB(c, 'fx.warm', weak(0.5 * c.strength));
+        }
+    });
+
+    UK.add({
+        id: 'combo.spinCut', cat: 'combo', name: 'Spin Cut · Вращение',
+        desc: 'Spin + Zoom Spin blur + Flash на склейке.',
+        tags: 'spin rotate transition вращение склейка', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.spin');
+            tr(c, 'trans.zoomSpin', weak(0.5 * c.strength));
+            tr(c, 'trans.flash', { strength: 50 * c.strength, dur: c.dur * 0.4 });
+        }
+    });
+
+    UK.add({
+        id: 'combo.whipStack', cat: 'combo', name: 'Speed Whip Stack · Быстрый пролёт',
+        desc: 'Whip Pan + RGB Split + Shake. Агрессивный быстрый переход.',
+        tags: 'whip rgb shake speed пролёт быстрый', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.whipPan', { strength: 120 * c.strength });
+            tr(c, 'trans.rgbSplit', weak(0.8 * c.strength));
+            tr(c, 'trans.shake', weak(0.5 * c.strength));
+        }
+    });
+
+    UK.add({
+        id: 'combo.glitchCut', cat: 'combo', name: 'Glitch Cut · Глитч-склейка',
+        desc: 'Glitch + Pixelate + RGB Split + Glitch Hit на входящем слое.',
+        tags: 'glitch cut pixel rgb глитч склейка', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.glitch');
+            tr(c, 'trans.pixelate', weak(0.6 * c.strength));
+            tr(c, 'trans.rgbSplit', weak(0.6 * c.strength));
+            if (c.B) atTime(c, 'fx.glitchHit', c.cut, { dur: Math.min(0.3, c.dur * 0.4), strength: 60 * c.strength }, c.B);
+        }
+    });
+
+    UK.add({
+        id: 'combo.dreamCut', cat: 'combo', name: 'Dream Cut · Мягкая склейка',
+        desc: 'Gaussian Blur dissolve + Light Leak + Dip to Color (белый) — мечтательный переход.',
+        tags: 'dream soft blur leak мягкий переход', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.gaussBlur', weak(0.8 * c.strength));
+            tr(c, 'trans.lightLeak', weak(0.7 * c.strength));
+            tr(c, 'trans.flash', { strength: 35 * c.strength, dur: c.dur * 0.6 });
+        }
+    });
+
+    UK.add({
+        id: 'combo.pushStack', cat: 'combo', name: 'Push + Blur · Сдвиг с размытием',
+        desc: 'Push (слои выталкивают друг друга) + Directional Blur + Shake лёгкий.',
+        tags: 'push slide blur сдвиг переход', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.push');
+            tr(c, 'trans.dirBlur', weak(0.7 * c.strength));
+            tr(c, 'trans.shake', weak(0.25 * c.strength));
+        }
+    });
+
+    UK.add({
+        id: 'combo.lensCut', cat: 'combo', name: 'Lens Cut · Оптика',
+        desc: 'Lens Distortion + Zoom Blur + Chroma Zoom — «линзовый» переход.',
+        tags: 'lens distortion zoom chroma оптика линза', needs: 'trans',
+        apply: function (c) {
+            tr(c, 'trans.lensDistort');
+            tr(c, 'trans.zoomBlur', weak(0.6 * c.strength));
+            tr(c, 'trans.chromaZoom', weak(0.5 * c.strength));
         }
     });
 

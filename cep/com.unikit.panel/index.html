@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UniKit</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app" class="app">
+
+  <!-- ВКЛАДКИ КАТЕГОРИЙ -->
+  <nav id="tabs" class="tabs" aria-label="Категории"></nav>
+
+  <!-- ПОИСК -->
+  <div class="search">
+    <svg class="ico" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="search" type="search" placeholder="Поиск пресета… (по всем категориям)" autocomplete="off" spellcheck="false">
+    <button id="searchClear" class="icon-btn hidden" title="Очистить" aria-label="Очистить поиск">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
+
+  <!-- СЕТКА -->
+  <main id="grid" class="grid" tabindex="0"></main>
+
+  <!-- ОПИСАНИЕ ВЫБРАННОГО -->
+  <section id="info" class="info hidden">
+    <div class="info-head">
+      <div id="infoName" class="info-name"></div>
+      <button id="infoFav" class="icon-btn fav-btn" title="В избранное">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z"/></svg>
+      </button>
+    </div>
+    <div id="infoDesc" class="info-desc"></div>
+    <div id="infoHint" class="info-hint"></div>
+  </section>
+
+  <!-- НАСТРОЙКИ -->
+  <section id="settings" class="settings">
+    <button id="settingsToggle" class="settings-toggle" type="button">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 12h2M10 12h10M4 17h12M20 17h0"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="12" r="2"/><circle cx="18" cy="17" r="2"/></svg>
+      <span>Настройки</span>
+      <span id="settingsSummary" class="settings-summary"></span>
+      <svg class="ico chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+    </button>
+    <div id="settingsBody" class="settings-body">
+
+      <!-- Длительность -->
+      <div class="row" title="Длительность анимации или перехода, секунды">
+        <label class="lbl" for="optDur">
+          <svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/></svg>
+          <span>Длительность</span>
+        </label>
+        <div class="ctl">
+          <input id="optDur" type="number" min="0.05" max="20" step="0.05" value="0.8">
+          <span class="unit">с</span>
+          <div class="chips" id="durChips">
+            <button type="button" data-v="0.3">0.3</button>
+            <button type="button" data-v="0.5">0.5</button>
+            <button type="button" data-v="0.8">0.8</button>
+            <button type="button" data-v="1.2">1.2</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Изинг -->
+      <div class="row" title="Характер движения: Back/Bounce/Elastic добавляют выражение поверх ключей">
+        <label class="lbl" for="optEase">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M3 19C9 19 9 5 21 5"/><path d="M3 21V3M3 21h18" opacity=".35"/></svg>
+          <span>Изинг</span>
+        </label>
+        <div class="ctl">
+          <div class="select-wrap">
+            <svg id="easeIcon" class="ease-ico" viewBox="0 0 24 24"><path d="M3 19C9 19 9 5 21 5"/></svg>
+            <select id="optEase"></select>
+            <svg class="ico chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Направление -->
+      <div class="row" title="Направление для slide / wipe / whip и всего, где есть геометрия">
+        <div class="lbl">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg>
+          <span>Направление</span>
+        </div>
+        <div class="ctl">
+          <div class="seg dirs" id="optDir">
+            <button type="button" data-v="L" title="Слева">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M20 12H5M11 6l-6 6 6 6"/></svg>
+            </button>
+            <button type="button" data-v="U" title="Сверху">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M12 20V5M6 11l6-6 6 6"/></svg>
+            </button>
+            <button type="button" data-v="D" title="Снизу">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></svg>
+            </button>
+            <button type="button" data-v="R" title="Справа">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M4 12h15M13 6l6 6-6 6"/></svg>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Сила -->
+      <div class="row" title="Амплитуда / интенсивность: расстояние, размытие, искажение">
+        <label class="lbl" for="optStr">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+          <span>Сила</span>
+        </label>
+        <div class="ctl ctl-range">
+          <input id="optStr" type="range" min="0" max="300" step="5" value="100">
+          <output id="optStrOut" for="optStr">100%</output>
+        </div>
+      </div>
+
+      <!-- Старт -->
+      <div class="row" title="Откуда начинать анимацию">
+        <div class="lbl">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M5 4v16M5 12h14M15 8l4 4-4 4"/></svg>
+          <span>Старт</span>
+        </div>
+        <div class="ctl">
+          <div class="seg" id="optStart">
+            <button type="button" data-v="in" title="От границы слоя (in/out point)">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M8 4H5v16h3M16 4h3v16h-3"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg>
+              <span>Слой</span>
+            </button>
+            <button type="button" data-v="playhead" title="От курсора (playhead)">
+              <svg class="ico" viewBox="0 0 24 24"><path d="M12 7v14M8 3h8l-4 4z"/><path d="M3 21h18" opacity=".35"/></svg>
+              <span>Курсор</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Шаг -->
+      <div class="row" title="Задержка между слоями при применении на несколько слоёв (каскад)">
+        <label class="lbl" for="optStag">
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 20h5v-4h5v-4h5V8"/><path d="M19 8V4h1" opacity=".35"/></svg>
+          <span>Шаг</span>
+        </label>
+        <div class="ctl">
+          <input id="optStag" type="number" min="0" max="5" step="0.05" value="0.1">
+          <span class="unit">с</span>
+        </div>
+      </div>
+
+      <!-- Тогглы -->
+      <div class="row toggles">
+        <label class="toggle" title="Параметры пресета выносятся в Effect Controls как слайдеры UK: … и управляют эффектами через выражения">
+          <input id="optControls" type="checkbox" checked>
+          <span class="tg"></span>
+          <svg class="ico" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/><circle cx="9" cy="6" r="2" fill="currentColor"/><circle cx="15" cy="12" r="2" fill="currentColor"/><circle cx="7" cy="18" r="2" fill="currentColor"/></svg>
+          <span>Слайдеры</span>
+        </label>
+        <label class="toggle" title="Эффекты / искажения / свет / камера — на новый корректирующий слой над выделением">
+          <input id="optAdj" type="checkbox">
+          <span class="tg"></span>
+          <svg class="ico" viewBox="0 0 24 24"><path d="M3 12l9-5 9 5-9 5z"/><path d="M3 17l9 5 9-5" opacity=".5"/><path d="M19 3v6M16 6h6"/></svg>
+          <span>Корр. слой</span>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ДЕЙСТВИЯ -->
+  <footer class="actions">
+    <div class="actions-row">
+      <button id="btnApply" class="btn primary" type="button" title="Применить выбранный пресет (Enter / двойной клик)">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
+        <span>Применить</span>
+      </button>
+      <button id="btnPreview" class="btn" type="button" title="Применить временно и запустить предпросмотр в композиции">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span>Превью</span>
+      </button>
+      <button id="btnKeep" class="btn ok hidden" type="button" title="Оставить результат предпросмотра">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M5 12l5 5L20 7"/></svg>
+        <span>Оставить</span>
+      </button>
+      <button id="btnUndo" class="btn warn hidden" type="button" title="Отменить предпросмотр (Undo)">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 010 12h-3"/></svg>
+        <span>Отменить</span>
+      </button>
+      <button id="btnClean" class="btn icon-only" type="button" title="Удалить все эффекты и контролы UniKit с выделенных слоёв">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M14 3l7 7-5 5-7-7z"/><path d="M9 8l-6 6 2 5 5 2 6-6"/><path d="M5 16l3 3"/></svg>
+      </button>
+    </div>
+    <div id="status" class="status">
+      <span class="dot"></span>
+      <span id="statusText">Подключение к After Effects…</span>
+    </div>
+  </footer>
+
+  <div id="toasts" class="toasts"></div>
+</div>
+
+<!-- шаблон карточки -->
+<template id="tplCard">
+  <article class="card" tabindex="-1">
+    <div class="pv">
+      <div class="pv-frame"></div>
+      <div class="pv-frame pv-frame2"></div>
+      <div class="pv-obj"></div>
+      <div class="pv-extra"></div>
+      <span class="pv-txt"><i>U</i><i>n</i><i>i</i><i>K</i><i>i</i><i>t</i></span>
+    </div>
+    <button class="star" type="button" title="В избранное">
+      <svg class="ico" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1.1 5.9L12 16.9l-5.3 2.8 1.1-5.9-4.3-4.1 5.9-.8z"/></svg>
+    </button>
+    <span class="badge"></span>
+    <div class="name"></div>
+  </article>
+</template>
+
+<script src="js/cep.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

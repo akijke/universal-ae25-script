@@ -57,3 +57,9 @@ lines.forEach((ln, i) => {
     }
 });
 if (problems) console.log(problems + ' ES3 warning(s)');
+
+// --- копия ядра в CEP-расширение (хост-скрипт панели)
+const cepHost = path.join(root, 'cep', 'com.unikit.panel', 'host');
+fs.mkdirSync(cepHost, { recursive: true });
+fs.copyFileSync(out, path.join(cepHost, 'UniKit.jsx'));
+console.log('copied ->', path.relative(root, path.join(cepHost, 'UniKit.jsx')));

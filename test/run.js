@@ -8,6 +8,9 @@ const M = require('./mock_ae.js');
 const code = fs.readFileSync(path.join(__dirname, '..', 'dist', 'UniKit.jsx'), 'utf8').replace(/^﻿/, '');
 const ctx = Object.assign({ console }, M);
 vm.createContext(ctx);
+// в ExtendScript $.global — это глобальный объект; в vm им становится сам контекст
+ctx.$ = Object.assign({}, M.$, { global: ctx });
+ctx.UK_HEADLESS = true;
 try {
     vm.runInContext(code, ctx, { filename: 'UniKit.jsx' });
 } catch (e) {
@@ -74,6 +77,28 @@ for (const p of UK.presets) {
         }
     }
     if (presetFailed) fails++; else ok++;
+}
+// --- bridge API (CEP)
+{
+    const o = freshComp(); app.project.activeItem = o.c; select(o, [o.a]);
+    const cat = JSON.parse(UK.catalogJSON());
+    if (!cat.presets || cat.presets.length !== UK.presets.length) { console.log('FAIL catalogJSON'); fails++; }
+    const sel = JSON.parse(UK.selectionJSON());
+    if (!sel.comp || sel.count !== 1) { console.log('FAIL selectionJSON', sel); fails++; }
+    const r = JSON.parse(UK.runJSON('in.fade', '{"dur":0.5,"ease":"back","controls":true}'));
+    if (!r.ok) { console.log('FAIL runJSON', r); fails++; }
+    const bad = JSON.parse(UK.runJSON('nope.x', '{}'));
+    if (bad.ok) { console.log('FAIL runJSON should fail for unknown id'); fails++; }
+    select(o, [o.a, o.b]);
+    const pv = JSON.parse(UK.previewJSON('trans.zoomBlur', '{"dur":1}'));
+    if (!pv.ok) { console.log('FAIL previewJSON', pv); fails++; }
+    const un = JSON.parse(UK.previewUndoJSON());
+    if (!un.ok || !un.undone) { console.log('FAIL previewUndoJSON', un); fails++; }
+    const fv = JSON.parse(UK.toggleFavJSON('in.fade'));
+    if (fv.fav !== true) { console.log('FAIL toggleFavJSON', fv); fails++; }
+    UK.toggleFav('in.fade');
+    const missing = UK.presets.filter(p => !UK.PREVIEW[p.id] && !p.preview).map(p => p.id);
+    if (missing.length) console.log('presets without preview key (' + missing.length + '):', missing.slice(0, 30).join(', '), missing.length > 30 ? '…' : '');
 }
 console.log('\n=== presets: ' + UK.presets.length + ' total; tested ' + total + '; ok ' + ok + '; FAIL ' + fails);
 console.log('by category:', JSON.stringify(counts));

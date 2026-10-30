@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>UniKit — все ключи превью</title>
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  body { overflow: auto; padding: 12px; }
+  .wrap { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+  .k { font-size: 10px; color: var(--muted); margin-top: 4px; text-align: center; font-family: monospace; }
+</style>
+</head>
+<body>
+<h3 style="margin:0 0 10px">Ключи превью (все анимации играют)</h3>
+<div class="wrap" id="wrap"></div>
+<script>
+var KEYS = 'fadeIn fadeOut slideIn slideOut scaleIn scaleOut popIn popOut spin flip blurIn blurOut wipe blinds iris bounce elastic glitch pixel flash shake zoom whip push dissolve rgb twist ripple wave bulge mirror kaleido sweep rays leak glow grade grain vignette letterbox typewriter textUp textScale counter camera orbit stretch roll swing squash pan echo strobe shadow liquid tool combo'.split(' ');
+var w = document.getElementById('wrap');
+KEYS.forEach(function (k) {
+  var d = document.createElement('div');
+  d.innerHTML = '<div class="pv play" data-preview="' + k + '"><div class="pv-frame"></div><div class="pv-frame pv-frame2"></div><div class="pv-obj"></div><div class="pv-extra"></div><span class="pv-txt"><i>U</i><i>n</i><i>i</i><i>K</i><i>i</i><i>t</i></span></div><div class="k">' + k + '</div>';
+  w.appendChild(d);
+});
+</script>
+</body>
+</html>

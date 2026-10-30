@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ExtensionManifest xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ExtensionBundleId="com.unikit.panel" ExtensionBundleName="UniKit" ExtensionBundleVersion="1.1.0" Version="9.0">
+  <ExtensionList>
+    <Extension Id="com.unikit.panel.main" Version="1.1.0"/>
+  </ExtensionList>
+  <ExecutionEnvironment>
+    <HostList>
+      <Host Name="AEFT" Version="[13.0,99.9]"/>
+    </HostList>
+    <LocaleList>
+      <Locale Code="All"/>
+    </LocaleList>
+    <RequiredRuntimeList>
+      <RequiredRuntime Name="CSXS" Version="9.0"/>
+    </RequiredRuntimeList>
+  </ExecutionEnvironment>
+  <DispatchInfoList>
+    <Extension Id="com.unikit.panel.main">
+      <DispatchInfo>
+        <Resources>
+          <MainPath>./index.html</MainPath>
+          <CEFCommandLine>
+            <Parameter>--allow-file-access-from-files</Parameter>
+            <Parameter>--allow-file-access</Parameter>
+          </CEFCommandLine>
+        </Resources>
+        <Lifecycle>
+          <AutoVisible>true</AutoVisible>
+        </Lifecycle>
+        <UI>
+          <Type>Panel</Type>
+          <Menu>UniKit</Menu>
+          <Geometry>
+            <Size>
+              <Height>760</Height>
+              <Width>380</Width>
+            </Size>
+            <MinSize>
+              <Height>500</Height>
+              <Width>300</Width>
+            </MinSize>
+            <MaxSize>
+              <Height>2000</Height>
+              <Width>1200</Width>
+            </MaxSize>
+          </Geometry>
+          <Icons/>
+        </UI>
+      </DispatchInfo>
+    </Extension>
+  </DispatchInfoList>
+</ExtensionManifest>
